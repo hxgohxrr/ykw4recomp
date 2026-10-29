@@ -106,10 +106,7 @@ to the local Discord client and can be disabled in Settings. GameBanana network
 requests are made when using its catalog or downloading a selected mod.
 
 ## Credits
-
-The runtime builds on **SwitchRecomp by MZ Labs** and
-[ScarletNX](https://github.com/scarletnx/ScarletNX), including their contributors
-and upstream dependencies. The Spanish translation option uses the work of
+The Spanish translation option uses the work of
 **REY3DS / YKW4_ES** and its contributors; translation patches remain separate
 from this project.
 
