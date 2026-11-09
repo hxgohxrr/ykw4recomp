@@ -1,5 +1,9 @@
 # YKW4Recomp
 
+<p align="center">
+  <img src="dist/icons/launcher-logo.png" alt="Yo-kai Watch 4++ Recomp ? logo by Pabl06" width="480">
+</p>
+
 Experimental desktop launcher for a Yo-kai Watch 4 recompilation project.
 It prepares user-supplied extracted files locally, manages RomFS mods and
 translations, and provides settings in Spanish, English and Japanese.
