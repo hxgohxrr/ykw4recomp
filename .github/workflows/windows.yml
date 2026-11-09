@@ -1,0 +1,43 @@
+name: Windows launcher build
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
+        with:
+          msystem: CLANG64
+          update: true
+          install: >-
+            git make patch perl
+            mingw-w64-clang-x86_64-clang
+            mingw-w64-clang-x86_64-llvm
+            mingw-w64-clang-x86_64-lld
+            mingw-w64-clang-x86_64-cmake
+            mingw-w64-clang-x86_64-ninja
+            mingw-w64-clang-x86_64-nasm
+            mingw-w64-clang-x86_64-python
+      - name: Audit source
+        run: python scripts/audit_public_source.py
+      - name: Configure
+        run: |
+          cmake --preset launcher-windows \
+            -DSNX_LLVM_CONFIG="$(cygpath -m "$(command -v llvm-config)")" \
+            -DSNX_FFMPEG_SH="$(cygpath -m /usr/bin/sh.exe)" \
+            -DSNX_FFMPEG_MAKE="$(cygpath -m /usr/bin/make.exe)" \
+            -DPERL_EXECUTABLE="$(cygpath -m /usr/bin/perl.exe)" \
+            -DSNX_OPENSSL_MAKE="$(cygpath -m /usr/bin/make.exe)"
+      - run: cmake --build --preset launcher-windows --parallel 4
+      - run: ctest --test-dir build/launcher-windows -R '^(launcher_update|discord_presence|window_icon|launcher_name|launcher_zip|launcher_icon)$' --output-on-failure
+
+

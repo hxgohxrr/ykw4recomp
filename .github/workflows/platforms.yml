@@ -1,0 +1,225 @@
+name: Experimental platform builds
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Platform to build
+        type: choice
+        default: all
+        options: [all, other, linux, macos, ios, android]
+      release_id:
+        description: Existing draft release ID for downloadable packages (optional)
+        type: string
+        default: ''
+permissions:
+  contents: write
+defaults:
+  run:
+    shell: bash
+jobs:
+  linux:
+    if: inputs.target == 'all' || inputs.target == 'other' || inputs.target == 'linux'
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    timeout-minutes: 90
+    steps:
+      - run: pacman -Syu --noconfirm --needed git cmake ninja make patch nasm perl python clang llvm pkgconf sdl3 libxtst libxrandr libxss
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build Linux runtime
+        run: |
+          set -o pipefail
+          cmake --preset default -DSNX_DEPLOY=OFF -DSNX_BUILD_GNUABI=OFF -DSNX_BUILD_3DS=OFF -DBUILD_TESTING=OFF 2>&1 | tee configure.txt
+          cmake --build --preset default --parallel 4 2>&1 | tee compile.txt
+          cmake --install build/default --prefix stage
+      - name: Record successful compilation
+        run: echo "Compilation and install completed for ${{ github.job }}. Artifact upload is a separate step." >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload package and corresponding source to draft release
+        if: inputs.release_id != ''
+        env:
+          DRAFT_RELEASE_ID: ${{ inputs.release_id }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/package_platform_ci.py --platform linux
+      - name: Upload failure logs to draft release
+        if: failure() && inputs.release_id != ''
+        continue-on-error: true
+        env:
+          DRAFT_RELEASE_ID: ${{ inputs.release_id }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/package_platform_ci.py --platform linux --logs-only
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        if: inputs.release_id == '' && success()
+        with:
+          name: experimental-linux-x86_64
+          path: stage/
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        if: inputs.release_id == '' && always()
+        with:
+          name: logs-linux
+          path: '*.txt'
+          retention-days: 7
+  apple:
+    if: inputs.target == 'all' || inputs.target == 'other' || inputs.target == 'macos' || inputs.target == 'ios'
+    name: ${{ matrix.platform }} arm64
+    runs-on: macos-26
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJSON(inputs.target == 'macos' && '["macos"]' || inputs.target == 'ios' && '["ios"]' || '["macos","ios"]') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: brew install ninja
+      - id: xcode
+        run: echo "version=$(xcodebuild -version | tr '\n' '-')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
+        id: llvm
+        with:
+          path: target-llvm
+          key: llvm-${{ matrix.platform }}-${{ steps.xcode.outputs.version }}-${{ hashFiles('scripts/apple-llvm.sh', 'scripts/llvm-libraries/**') }}
+
+          restore-keys: ${{ hashFiles('scripts/apple-llvm.sh', 'scripts/llvm-libraries/**') == 'e83b0d721980afb166f7d70bfa0fd1f6e775a8f3bc889014439bf7640ae309c2' && format('llvm-{0}-{1}-1e28adc359fcfb9d4b11a0b38b82ca835ad06283f48d1191cfee85c36dd85d95', matrix.platform, steps.xcode.outputs.version) || '' }}
+      - name: Build target LLVM
+        if: steps.llvm.outputs.cache-matched-key == ''
+        run: |
+          set -o pipefail
+          sh scripts/apple-llvm.sh ${{ matrix.platform }} "$PWD/target-llvm" 2>&1 | tee llvm.txt
+      - uses: actions/cache/save@v4
+        if: steps.llvm.outputs.cache-hit != 'true'
+        continue-on-error: true
+        with:
+          path: target-llvm
+          key: ${{ steps.llvm.outputs.cache-primary-key }}
+      - name: Build Apple runtime
+        run: |
+          set -o pipefail
+          cmake --preset ${{ matrix.platform }} -DLLVM_DIR="$PWD/target-llvm/lib/cmake/llvm" -DSNX_DEPLOY=OFF -DSNX_BUILD_3DS=OFF -DBUILD_TESTING=OFF 2>&1 | tee configure.txt
+          cmake --build --preset ${{ matrix.platform }} --parallel 3 2>&1 | tee compile.txt
+          cmake --install build/${{ matrix.platform }} --prefix stage
+      - name: Package unsigned iOS IPA
+        if: matrix.platform == 'ios'
+        run: |
+          curl -fL -o moltenvk.tar https://github.com/V380-Ori/Ryujinx.MoltenVK/releases/download/v1.4.1-ryujinx/MoltenVK-ios.tar
+          echo "7cec48d4e73cf9eb89b60e8596758900caaf8398c49ae8abe4544295fb7e0c84  moltenvk.tar" | shasum -a 256 -c
+          mkdir moltenvk
+          tar -xf moltenvk.tar -C moltenvk
+          sh scripts/apple-app.sh ios stage app moltenvk
+          unzip -t app/YKW4Recomp.ipa
+      - name: Record successful compilation
+        run: echo "Compilation and install completed for ${{ github.job }}. Artifact upload is a separate step." >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload package and corresponding source to draft release
+        if: inputs.release_id != ''
+        env:
+          DRAFT_RELEASE_ID: ${{ inputs.release_id }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/package_platform_ci.py --platform ${{ matrix.platform }}
+      - name: Upload failure logs to draft release
+        if: failure() && inputs.release_id != ''
+        continue-on-error: true
+        env:
+          DRAFT_RELEASE_ID: ${{ inputs.release_id }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/package_platform_ci.py --platform ${{ matrix.platform }} --logs-only
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        if: inputs.release_id == '' && success()
+        with:
+          name: experimental-${{ matrix.platform }}-arm64
+          path: stage/
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        if: inputs.release_id == '' && always()
+        with:
+          name: logs-${{ matrix.platform }}
+          path: '*.txt'
+          retention-days: 7
+  android:
+    if: inputs.target == 'all' || inputs.target == 'android'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      ANDROID_NDK_ROOT: /usr/local/lib/android/sdk/ndk/28.2.13676358
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+      - run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install 'ndk;28.2.13676358' 'platforms;android-36'
+          sudo apt-get update
+          sudo apt-get install -y ninja-build nasm
+      - uses: actions/cache/restore@v4
+        id: llvm
+        with:
+          path: android-llvm/arm64-v8a
+          key: llvm-android-arm64-28.2-${{ hashFiles('scripts/android-llvm.sh', 'scripts/llvm-libraries/**') }}
+
+          restore-keys: ${{ hashFiles('scripts/android-llvm.sh', 'scripts/llvm-libraries/**') == '92fc45d55c1b2d5445fe3b3ddd5c8388f8b3ca960d90e65ba2ffccb8a501b486' && format('llvm-android-arm64-28.2-f0452465957bc06269629227b29dc36bfabd6322a63ca25c4826e8d5c524a7db') || '' }}
+      - name: Build target LLVM
+        if: steps.llvm.outputs.cache-matched-key == ''
+        run: |
+          set -o pipefail
+          sh scripts/android-llvm.sh arm64-v8a "$PWD/android-llvm/arm64-v8a" 2>&1 | tee llvm.txt
+      - name: Remove completed LLVM build intermediates
+        run: |
+          python3 - <<'PY'
+          import os, shutil
+          from pathlib import Path
+          root = Path(os.environ['GITHUB_WORKSPACE']).resolve()
+          build = root / 'android-llvm/arm64-v8a.build'
+          build.resolve().relative_to(root)
+          if build.is_symlink():
+              raise SystemExit('Refusing symlink build directory')
+          if build.is_dir():
+              shutil.rmtree(build)
+          PY
+          df -h .
+      - uses: actions/cache/save@v4
+        if: steps.llvm.outputs.cache-hit != 'true'
+        continue-on-error: true
+        with:
+          path: android-llvm/arm64-v8a
+          key: ${{ steps.llvm.outputs.cache-primary-key }}
+      - name: Build native runtime and debug APK
+        run: |
+          set -o pipefail
+          JAVA_HOME="$JAVA_HOME_21_X64" sh scripts/android-apk.sh "$PWD/build/android" "$PWD/android-llvm" arm64-v8a -- -DSNX_BUILD_3DS=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_JOB_POOLS=link=1 -DCMAKE_JOB_POOL_LINK=link -DCMAKE_SHARED_LINKER_FLAGS=-Wl,--threads=2 -DCMAKE_EXE_LINKER_FLAGS=-Wl,--threads=2 2>&1 | tee compile.txt
+      - name: Record successful compilation
+        run: echo "Compilation and install completed for ${{ github.job }}. Artifact upload is a separate step." >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload package and corresponding source to draft release
+        if: inputs.release_id != ''
+        env:
+          DRAFT_RELEASE_ID: ${{ inputs.release_id }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/package_platform_ci.py --platform android
+      - name: Upload failure logs to draft release
+        if: failure() && inputs.release_id != ''
+        continue-on-error: true
+        env:
+          DRAFT_RELEASE_ID: ${{ inputs.release_id }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/package_platform_ci.py --platform android --logs-only
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        if: inputs.release_id == '' && success()
+        with:
+          name: experimental-android-arm64
+          path: build/android/stage/gradle/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        if: inputs.release_id == '' && always()
+        with:
+          name: logs-android
+          path: '*.txt'
+          retention-days: 7

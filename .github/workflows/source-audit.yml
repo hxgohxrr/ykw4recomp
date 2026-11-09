@@ -1,0 +1,14 @@
+name: Source content audit
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  source-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: python3 scripts/audit_public_source.py
+
+      - run: python3 -m unittest discover -s scripts/switchprep -p "test_*.py"

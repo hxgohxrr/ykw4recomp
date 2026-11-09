@@ -1,0 +1,8 @@
+
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_JOYSTICK}=="1", TAG+="uaccess"
+
+
+
+
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="057e", TAG+="uaccess"
+SUBSYSTEM=="hidraw", KERNELS=="0005:057E:*", TAG+="uaccess"

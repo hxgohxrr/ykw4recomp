@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright 2026 the ScarletNX contributors
+
+
+type nn::applet::AppletResourceUserId = u64;
+type nn::account::Uid = bytes<0x10, 8>;
+type nn::util::Uuid = bytes<0x10>;
+type nn::ApplicationId = u64;
+
+type nn::settings::LanguageCode = bytes<8>;
+type nn::ncm::ApplicationId = u64;
+type nn::ncm::DataId = u64;
+type nn::account::NetworkServiceAccountId = u64;
+type nn::audio::AudioDeviceName = bytes<0x100>;

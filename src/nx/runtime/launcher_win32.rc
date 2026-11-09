@@ -1,0 +1,129 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+#include <windows.h>
+#include <commctrl.h>
+#include "launcher_ids.h"
+#pragma code_page(65001)
+IDB_BRAND_LOGO BITMAP "../../../dist/icons/launcher-logo.bmp"
+IDD_YKW4_LAUNCHER DIALOGEX 0, 0, 330, 361
+STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "YKW4Recomp"
+FONT 9, "Segoe UI"
+BEGIN
+    CONTROL "", IDC_TABS, "SysTabControl32", WS_TABSTOP, 10, 7, 310, 289
+    GROUPBOX "Juego", -1, 10, 33, 310, 45
+    PUSHBUTTON "Instalar actualización...", IDC_INSTALL_UPDATE, 187, 155, 120, 18, WS_TABSTOP
+    LTEXT "&Traducción:", -1, 20, 52, 78, 12
+    COMBOBOX IDC_LANGUAGE, 103, 49, 204, 65, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    GROUPBOX "Imagen", -1, 10, 85, 310, 93
+    LTEXT "&Límite de FPS:", -1, 20, 105, 78, 12
+    COMBOBOX IDC_FPS, 103, 102, 92, 90, CBS_DROPDOWN | WS_VSCROLL | WS_TABSTOP
+    LTEXT "&Resolución:", -1, 20, 131, 78, 12
+    COMBOBOX IDC_RESOLUTION, 103, 128, 92, 90, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    AUTOCHECKBOX "&Pantalla completa", IDC_FULLSCREEN, 207, 103, 104, 14, WS_TABSTOP
+    AUTOCHECKBOX "Sincronización &vertical", IDC_VSYNC, 207, 126, 107, 14, WS_TABSTOP
+    AUTOCHECKBOX "&Sombras", IDC_SHADOWS, 20, 157, 100, 13, WS_TABSTOP
+    GROUPBOX "Mando", -1, 10, 185, 310, 66
+    LTEXT "&Zona muerta (%):", -1, 20, 206, 83, 12
+    EDITTEXT IDC_DEADZONE, 105, 203, 39, 15, ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP
+    LTEXT "Vi&bración (%):", -1, 165, 206, 83, 12
+    EDITTEXT IDC_RUMBLE, 254, 203, 39, 15, ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP
+    AUTOCHECKBOX "Intercambiar botones &A y B", IDC_SWAP_AB, 20, 229, 200, 13, WS_TABSTOP
+    CONTROL "", IDC_MODLIST, "SysListView32", LVS_REPORT | LVS_SINGLESEL | WS_BORDER | WS_TABSTOP, 19, 35, 292, 141
+    PUSHBUTTON "Añadir mod...", IDC_MOD_ADD, 19, 183, 88, 19, WS_TABSTOP
+    PUSHBUTTON "Añadir traducción...", IDC_TRANSLATION_ADD, 113, 183, 100, 19, WS_TABSTOP
+    PUSHBUTTON "Añadir ZIP...", IDC_MOD_ZIP, 219, 183, 92, 19, WS_TABSTOP
+    PUSHBUTTON "GameBanana...", IDC_MOD_CATALOG, 19, 208, 88, 19, WS_TABSTOP
+    PUSHBUTTON "Español y créditos...", IDC_SPANISH, 113, 208, 100, 19, WS_TABSTOP
+    PUSHBUTTON "Subir", IDC_MOD_UP, 219, 208, 43, 19, WS_TABSTOP
+    PUSHBUTTON "Bajar", IDC_MOD_DOWN, 268, 208, 43, 19, WS_TABSTOP
+    LTEXT "Arriba tiene prioridad. Copia carpetas con romfs o archivos ZIP a mods: se detectan automáticamente.", IDC_MOD_INFO, 19, 238, 292, 43
+    GROUPBOX "Launcher", -1, 10, 258, 310, 35
+    LTEXT "Idioma del launcher:", -1, 20, 274, 101, 12
+    COMBOBOX IDC_UI_LANGUAGE, 130, 270, 177, 90, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    AUTOCHECKBOX "Mostrar actividad en Discord", IDC_RPC_ENABLED, 20, 38, 285, 14, WS_TABSTOP
+    AUTOCHECKBOX "Mostrar tiempo de esta sesión", IDC_RPC_TIME, 20, 59, 285, 14, WS_TABSTOP
+    LTEXT "ID de aplicación:", IDC_RPC_APP_LABEL, 20, 84, 108, 12
+    EDITTEXT IDC_RPC_APP, 132, 81, 174, 16, ES_AUTOHSCROLL | ES_NUMBER | WS_TABSTOP
+    LTEXT "Texto principal:", IDC_RPC_DETAILS_LABEL, 20, 110, 108, 12
+    EDITTEXT IDC_RPC_DETAILS, 132, 107, 174, 16, ES_AUTOHSCROLL | WS_TABSTOP
+    LTEXT "Contexto o zona:", IDC_RPC_CONTEXT_LABEL, 20, 136, 108, 12
+    EDITTEXT IDC_RPC_CONTEXT, 132, 133, 174, 16, ES_AUTOHSCROLL | WS_TABSTOP
+    LTEXT "Imagen sin DLC:", IDC_RPC_NORMAL_LABEL, 20, 162, 108, 12
+    EDITTEXT IDC_RPC_NORMAL, 132, 159, 174, 16, ES_AUTOHSCROLL | WS_TABSTOP
+    LTEXT "Imagen con DLC:", IDC_RPC_DLC_LABEL, 20, 188, 108, 12
+    EDITTEXT IDC_RPC_DLC, 132, 185, 174, 16, ES_AUTOHSCROLL | WS_TABSTOP
+    LTEXT "Discord debe estar abierto. El logo se elige según los DLC instalados. El contexto es editable; la zona aún no se detecta automáticamente. Los cambios se aplican al iniciar el juego.", IDC_RPC_NOTE, 20, 218, 286, 62
+    LTEXT "", IDC_STATUS, 14, 299, 302, 27
+    LTEXT "Compila un APK experimental desde Windows con WSL o desde Linux. Para un IPA se necesita macOS con Xcode. El asistente comprueba las herramientas y exige aceptar las condiciones antes de compilar. No incluye archivos del juego. Se necesita Python 3.10 o posterior con Tk.", IDC_MOBILE_INFO, 20, 45, 286, 100
+    PUSHBUTTON "Abrir compilador movil...", IDC_MOBILE_OPEN, 20, 158, 220, 22, WS_TABSTOP
+    LTEXT "Vinculación local a este PC y esta instalación de Windows. No se envía el HWID a servidores. Las instalaciones nuevas se vinculan al prepararlas; las antiguas solo si lo confirmas aquí. Cambiar el equipo o reinstalar Windows puede exigir preparar de nuevo. Las partidas no se modifican.", IDC_BINDING_INFO, 20, 45, 286, 110
+    PUSHBUTTON "Vincular instalación actual...", IDC_BINDING_SEAL, 20, 172, 220, 22, WS_TABSTOP
+    DEFPUSHBUTTON "&Jugar", IDOK, 95, 333, 70, 19, WS_TABSTOP
+    PUSHBUTTON "Aplicar", IDC_APPLY, 171, 333, 70, 19, WS_TABSTOP
+    PUSHBUTTON "Salir", IDCANCEL, 247, 333, 70, 19, WS_TABSTOP
+END
+
+IDD_YKW4_CATALOG DIALOGEX 0, 0, 420, 285
+STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "GameBanana · YKW4++"
+FONT 9, "Segoe UI"
+BEGIN
+    CONTROL "", IDC_REMOTE_LIST, "SysListView32", LVS_REPORT | LVS_SINGLESEL | WS_BORDER | WS_TABSTOP, 10, 10, 400, 191
+    LTEXT "", IDC_REMOTE_STATUS, 10, 208, 400, 35
+    PUSHBUTTON "Actualizar", IDC_REMOTE_REFRESH, 10, 255, 75, 19, WS_TABSTOP
+    PUSHBUTTON "Ver página", IDC_REMOTE_OPEN, 91, 255, 85, 19, WS_TABSTOP
+    DEFPUSHBUTTON "Instalar ZIP...", IDC_REMOTE_INSTALL, 182, 255, 120, 19, WS_TABSTOP
+    PUSHBUTTON "Cerrar", IDCANCEL, 308, 255, 102, 19, WS_TABSTOP
+END
+
+IDD_YKW4_SETUP DIALOGEX 0, 0, 395, 447
+STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Preparar YKW4Recomp"
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT "Instalar desde NSP / XCI", IDC_SETUP_HEADING, 12, 10, 225, 15
+    COMBOBOX IDC_UI_LANGUAGE, 258, 8, 125, 65, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT "", IDC_SETUP_INTRO, 12, 30, 370, 29
+    LTEXT "NSP / XCI del juego base:", IDC_SETUP_SOURCE_LABEL, 12, 67, 370, 12
+    EDITTEXT IDC_SETUP_SOURCE, 12, 82, 306, 16, ES_AUTOHSCROLL | ES_READONLY
+    PUSHBUTTON "Buscar...", IDC_SETUP_SOURCE_PICK, 325, 81, 58, 18, WS_TABSTOP
+    LTEXT "NSP / XCI de actualización (opcional):", IDC_SETUP_UPDATE_LABEL, 12, 107, 370, 12
+    EDITTEXT IDC_SETUP_UPDATE, 12, 122, 247, 16, ES_AUTOHSCROLL | ES_READONLY
+    PUSHBUTTON "Buscar...", IDC_SETUP_UPDATE_PICK, 265, 121, 58, 18, WS_TABSTOP
+    PUSHBUTTON "Quitar", IDC_SETUP_UPDATE_CLEAR, 328, 121, 55, 18, WS_TABSTOP
+    LTEXT "NSP / XCI de DLC (opcional, selección múltiple):", IDC_SETUP_DLC_LABEL, 12, 147, 370, 12
+    EDITTEXT IDC_SETUP_DLC, 12, 162, 247, 16, ES_AUTOHSCROLL | ES_READONLY
+    PUSHBUTTON "Buscar...", IDC_SETUP_DLC_PICK, 265, 161, 58, 18, WS_TABSTOP
+    PUSHBUTTON "Quitar", IDC_SETUP_DLC_CLEAR, 328, 161, 55, 18, WS_TABSTOP
+    LTEXT "prod.keys:", IDC_SETUP_KEYS_LABEL, 12, 187, 370, 12
+    EDITTEXT IDC_SETUP_KEYS, 12, 202, 306, 16, ES_AUTOHSCROLL
+    PUSHBUTTON "Buscar...", IDC_SETUP_KEYS_PICK, 325, 201, 58, 18, WS_TABSTOP
+    LTEXT "title.keys (opcional):", IDC_SETUP_TITLE_KEYS_LABEL, 12, 227, 370, 12
+    EDITTEXT IDC_SETUP_TITLE_KEYS, 12, 242, 306, 16, ES_AUTOHSCROLL
+    PUSHBUTTON "Buscar...", IDC_SETUP_TITLE_KEYS_PICK, 325, 241, 58, 18, WS_TABSTOP
+    CONTROL "", IDC_SETUP_PROGRESS, "msctls_progress32", PBS_MARQUEE, 12, 274, 370, 9
+    LTEXT "Se necesita espacio para preparar una copia local.", IDC_SETUP_STATUS, 12, 290, 245, 28
+    PUSHBUTTON "Usar carpetas", IDC_SETUP_PACKAGES, 265, 291, 117, 20, WS_TABSTOP
+    EDITTEXT IDC_SETUP_DETAIL, 12, 322, 370, 43, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL
+    LTEXT "", IDC_SETUP_SECURITY_STATUS, 12, 373, 246, 37
+    PUSHBUTTON "Antivirus...", IDC_SETUP_SECURITY, 265, 373, 117, 20, WS_TABSTOP
+    PUSHBUTTON "Abrir registro", IDC_SETUP_LOG, 12, 422, 115, 19, WS_TABSTOP
+    DEFPUSHBUTTON "Preparar", IDC_SETUP_START, 214, 422, 80, 19, WS_TABSTOP
+    PUSHBUTTON "Cancelar", IDCANCEL, 302, 422, 80, 19, WS_TABSTOP
+END
+
+IDD_YKW4_SECURITY DIALOGEX 0, 0, 395, 235
+STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Antivirus"
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT "", IDC_SECURITY_PRODUCTS, 12, 12, 370, 30
+    LTEXT "Si el antivirus bloquea la preparación, revisa su historial o cuarentena. Si has comprobado que el archivo es fiable, puedes autorizarlo o añadir una excepción para la carpeta del launcher.", -1, 12, 48, 370, 42
+    LTEXT "Una exclusión deja de analizar esa carpeta. Evita excluir el disco completo o Descargas. La confirmación se realiza en tu antivirus.", -1, 12, 94, 370, 30
+    EDITTEXT IDC_SECURITY_PATH, 12, 133, 370, 17, ES_AUTOHSCROLL | ES_READONLY | WS_TABSTOP
+    PUSHBUTTON "Copiar ruta", IDC_SECURITY_COPY, 12, 159, 115, 20, WS_TABSTOP
+    PUSHBUTTON "Abrir antivirus", IDC_SECURITY_OPEN, 139, 159, 115, 20, WS_TABSTOP
+    PUSHBUTTON "Abrir guía", IDC_SECURITY_GUIDE, 266, 159, 116, 20, WS_TABSTOP
+    LTEXT "", IDC_SECURITY_FEEDBACK, 12, 186, 270, 36
+    DEFPUSHBUTTON "Cerrar", IDCANCEL, 302, 210, 80, 19, WS_TABSTOP
+END

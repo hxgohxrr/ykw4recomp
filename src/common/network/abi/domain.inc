@@ -1,0 +1,8 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+   Copyright 2026 the ScarletNX contributors */
+
+SNX_NET_DOMAIN(UNSPEC, 0, AF_UNSPEC)
+SNX_NET_DOMAIN(UNIX, 1, AF_UNIX)
+SNX_NET_DOMAIN(INET, 2, AF_INET)
+SNX_NET_DOMAIN(INET6, 10, AF_INET6)
+#undef SNX_NET_DOMAIN

@@ -1,0 +1,448 @@
+/* Modified for YKW4 Launcher. See docs/LOCAL-CHANGES.md (2026-10-24). */
+/* SwitchRecomp - Copyright 2026 MZ Labs
+   Licensed under the Apache License 2.0. See LICENSE.apache and NOTICE;
+   any copy or derived work must keep the credit to SwitchRecomp by MZ Labs.
+   This fork's changes are under GPL-3.0-or-later, the license of the fork as a whole (LICENSE). */
+
+#include "nx/runtime/options.h"
+#include "nx/gpu/gpu.h"
+#include "nx/runtime/loader.h"
+#include "nx/runtime/main.h"
+#include "nx/hle/kernel/kernel.h"
+#include "nx/memory/mem.h"
+#include "nx/runtime/ini.h"
+#include "common/utilities/common.h"
+#include "common/utilities/ini_lines.h"
+#include "nx/runtime/platform/backend.h"
+#include "nx/runtime/platform/log.h"
+#include "nx/runtime/platform/plat.h"
+#include "nx/runtime/platform/unattended.h"
+#include "nx/runtime/platform/vpad.h"
+#include "nx/runtime/platform/gamepad.h"
+#include "nx/hle/services/services.h"
+#include <errno.h>
+#include <limits.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+int g_opt_diag = 0;
+int g_opt_gpu_sync_trace = 0;
+int g_opt_auto_stub_ipc = 1;
+int g_opt_docked = 1, g_opt_lang = 1, g_opt_fps = SNX_FPS_GAME, g_opt_fullscreen = 0;
+float g_opt_resf = 1.0f;
+int g_opt_shadows = 1;
+int g_opt_vsync = 1, g_opt_aniso = 0;
+int g_opt_backface_culling = 1;
+int g_opt_prof = 0;
+int g_opt_network = 0;
+
+
+#define INI_MAXK 128
+#define INI_LINE 2048
+static char g_ini_k[INI_MAXK][64], g_ini_v[INI_MAXK][INI_LINE];
+static int g_ini_n;
+static void ini_store(const char* k, const char* v) {
+    for (int i = 0; i < g_ini_n; i++)
+        if (!strcmp(g_ini_k[i], k)) {
+            snprintf(g_ini_v[i], sizeof g_ini_v[i], "%s", v);
+            return;
+        }
+    if (g_ini_n == INI_MAXK) {
+        WARN_LIMIT(1, "settings: more than %d keys in the .ini, %s and later ones are not kept\n", INI_MAXK, k);
+        return;
+    }
+    snprintf(g_ini_k[g_ini_n], sizeof g_ini_k[g_ini_n], "%s", k);
+    snprintf(g_ini_v[g_ini_n], sizeof g_ini_v[g_ini_n], "%s", v);
+    g_ini_n++;
+}
+static const char* ini_get(const char* k, const char* def) {
+    for (int i = 0; i < g_ini_n; i++)
+        if (!strcmp(g_ini_k[i], k)) return g_ini_v[i];
+    return def;
+}
+static int g_ini_started;  
+
+#define INI_MAXO 64
+static char g_ovr_k[INI_MAXO][64];
+static const char* g_ovr_v[INI_MAXO];
+static int g_ovr_n;
+void ini_override(const char* k, const char* v) {
+    int i = 0;
+    while (i < g_ovr_n && strcmp(g_ovr_k[i], k)) i++;
+    if (i == INI_MAXO) return;
+    snprintf(g_ovr_k[i], sizeof g_ovr_k[i], "%s", k);
+    g_ovr_v[i] = v;
+    if (i == g_ovr_n) g_ovr_n++;
+}
+static int ini_overridden(const char* k) {
+    for (int i = 0; i < g_ovr_n; i++)
+        if (!strcmp(g_ovr_k[i], k)) return 1;
+    return 0;
+}
+
+static int word_is(const char* v, const char* w) {
+    for (; *w; v++, w++)
+        if ((*v | 0x20) != *w) return 0;
+    return !*v;
+}
+
+static void fps_limit_set(const IniOpt* o, const char* v) {
+    char* end;
+    double d = strtod(v, &end);
+    int fps;
+    (void)o;
+    if (word_is(v, "game"))
+        fps = SNX_FPS_GAME;
+    else if (end != v && d == d)
+        fps = d < 0 || (d >= 1 && d < 2) ? SNX_FPS_GAME : d < 1 ? 0 : d < 10 ? 10 : d > 1000 ? 1000 : (int)d;
+    else
+        return;
+    __atomic_store_n(&g_opt_fps, fps, __ATOMIC_RELAXED);  
+}
+void fps_limit_text(int fps, char* out, size_t n) {
+    if (fps == SNX_FPS_GAME)
+        snprintf(out, n, "game");
+    else
+        snprintf(out, n, "%d", fps);
+}
+
+static void language_set(const IniOpt* o, const char* v) {
+    (void)o;
+    (void)v;
+    if (g_opt_lang < 0 || g_opt_lang >= set_language_count()) g_opt_lang = 1;
+}
+
+static void heap_max_set(const IniOpt* o, const char* v) {
+    char* end;
+    double mb = strtod(v, &end);
+    (void)o;
+    if (end == v || mb != mb) return;
+    g_heap_max = mb < 1 ? 0 : mb < (double)(HEAP_SIZE >> 20) ? (u64)mb << 20 : HEAP_SIZE;
+}
+
+static const IniOpt INI_DISPLAY[] = {
+    {"docked", "1", "1 = TV mode (1920x1080 / 1600x900 games), 0 = handheld mode (1280x720)", INI_INT, INI_STARTUP,
+     &g_opt_docked, 0, 1, NULL, NULL, NULL, 0, 0},
+    {"fullscreen", "0",
+     "1 = start in fullscreen (not in timed test runs). -f or --fullscreen=0 sets it for one run.\n"
+     ";   F11 or Alt+Enter switches while playing without changing this setting",
+     INI_INT, INI_STARTUP, &g_opt_fullscreen, 0, 1, NULL, NULL, NULL, 0, 0},
+    {"language", "1",
+     "Game language: 0 Japanese, 1 English (US), 2 French, 3 German, 4 Italian, 5 Spanish,\n;   6 Chinese, 7 Korean, "
+     "8 Dutch, 9 Portuguese, 10 Russian, 11 Taiwanese, 12 English (UK),\n;   13 French (Canada), 14 Spanish (Latin "
+     "America), 15 Chinese (Simplified), 16 Chinese (Traditional),\n;   17 Portuguese (Brazil)",
+     INI_INT, INI_STARTUP, &g_opt_lang, INT_MIN, INT_MAX, language_set, NULL, NULL, 0, 0},
+    {NULL, NULL, NULL, 0, 0, NULL, 0, 0, NULL, NULL, NULL, 0, 0}};
+static const IniOpt INI_GRAPHICS[] = {
+    {"force_visible", "0", "Occlusion: 0 = original estimates, 1 = always visible, 2 = conservative current-view GPU results",
+     INI_INT, INI_STARTUP, &g_gpu_force_visible, 0, 2, NULL, NULL, NULL, 0, 0},
+    {"backface_culling", "1", "0 = draw both sides of depth-tested 3D geometry; UI facing stays as the game requests",
+     INI_INT, 0, &g_opt_backface_culling, 0, 1, NULL, NULL, NULL, 0, 0},
+    {"resolution", "1", "Internal 3D resolution: 1 = native, 2 = double, 0.75 / 0.5 = faster", INI_FLOAT, INI_STARTUP,
+     &g_opt_resf, 0.25, 4, NULL, NULL, NULL, 0, 0},
+    {"shadows", "1", "0 = disable shadow maps (more FPS)", INI_INT, 0, &g_opt_shadows, 0, 1, NULL, NULL, NULL, 0, 0},
+    {"vsync", "1",
+     "1 = images are shown only on a refresh of the display, so nothing tears. 0 = no wait for the refresh: the\n"
+     ";   newest image is shown on the next one where the display can do that, else at once (which may tear).\n"
+     ";   A display that can do neither waits for the refresh as 1 does",
+     INI_INT, 0, &g_opt_vsync, 0, 1, NULL, NULL, NULL, 0, 0},
+    {"anisotropy", "0",
+     "Texture filtering at an angle: 0 = as the game asks. 2 to 16 = at least that much (sharper floors and roads\n"
+     ";   in 3D games, a little more GPU work)",
+     INI_INT, INI_STARTUP, &g_opt_aniso, 0, 16, NULL, NULL, NULL, 0, 0},
+    {NULL, NULL, NULL, 0, 0, NULL, 0, 0, NULL, NULL, NULL, 0, 0}};
+static const IniOpt INI_PERF[] = {
+    {"fps_limit", "game",
+     "game = the pace the game asks for, as on the console: 60 FPS, or 30 for a game made for 30.\n"
+     ";   0 = unlimited (a window shows at most one image per refresh unless images tear).\n"
+     ";   10 to 1000 = that many FPS.\n"
+     ";   A game that advances once per image changes speed with it: 30 runs a 60 FPS game at half speed.\n"
+     ";   F4 turns the limit off and on",
+     INI_TEXT, 0, NULL, 0, 0, fps_limit_set, NULL, NULL, 0, 0},
+    {"memory_gb", "0",
+     "Memory the game sees: 0 or 4 = 3.2 GB like the console, 6 or 8 = more (like yuzu's extended memory layout).\n;"
+     "   Games that run out of memory on 3.2 GB, like Tears of the Kingdom, need 6",
+     INI_INT, INI_STARTUP, &g_opt_mem_gb, 0, 8, NULL, NULL, NULL, 0, 0},
+    {"heap_max_mb", "0", "The most heap the game can allocate, in MB: 0 = as much as the memory allows", INI_TEXT,
+     INI_STARTUP, NULL, 0, 0, heap_max_set, NULL, NULL, 0, 0},
+    {NULL, NULL, NULL, 0, 0, NULL, 0, 0, NULL, NULL, NULL, 0, 0}};
+static const IniOpt INI_NETWORK[] = {
+    {"network", "0",
+     "1 = host networking. Known console service domains are blocked by the resolver, not by an IP firewall.\n;   0 = "
+     "report offline and restrict outbound destinations to loopback. This is not a network sandbox",
+     INI_INT, 0, &g_opt_network, 0, 1, NULL, NULL, NULL, 0, 0},
+    {NULL, NULL, NULL, 0, 0, NULL, 0, 0, NULL, NULL, NULL, 0, 0}};
+static const IniOpt INI_DBG[] = {
+    {"log", "1", "Log detail: 1 = normal, 2 = everything (slow)", INI_INT, 0, &g_verbose, 0, 2, NULL, NULL, NULL, 0, 0},
+    {"auto_stub_ipc", "1",
+     "1 = a service command the runtime doesn't know answers success (logged as [undeclared]), 0 = it fails with "
+     "UnknownCommandId, as on a console",
+     INI_INT, 0, &g_opt_auto_stub_ipc, 0, 1, NULL, NULL, NULL, 0, 0},
+    {"diag", "0",
+     "1 = save the data of each new compute shader to captures/compute, and every new shader's\n;   snx-shaderc corpus entry to captures/shaders, for debugging",
+     INI_INT, 0, &g_opt_diag, 0, 1, NULL, NULL, NULL, 0, 0},
+    {"gpu_sync_trace", "0",
+     "1 = log and wait for every draw/dispatch (very slow), 2 = wait at frame completion, 3 = trace and wait for dispatches only, 4 = conservative GPU draw barriers, 5 = route guest compute to graphics queue (experimental)",
+     INI_INT, INI_STARTUP, &g_opt_gpu_sync_trace, 0, 5, NULL, NULL, NULL, 0, 0},
+    {"profile", "0", "1 = write profile.txt every 10 seconds (CPU profiler, Windows only)", INI_INT, INI_STARTUP,
+     &g_opt_prof, 0, 1, NULL, NULL, NULL, 0, 0},
+    {NULL, NULL, NULL, 0, 0, NULL, 0, 0, NULL, NULL, NULL, 0, 0}};
+
+typedef struct {
+    const IniOpt* opts;
+    int (*apply)(const char* k, const char* v);
+    const char* page;
+} IniTable;
+#define INI_SEC_TABLES 3
+typedef struct {
+    const char* title;
+    IniTable t[INI_SEC_TABLES];
+} IniSec;
+static const IniSec INI_SECS[] = {
+    {"Display", {{INI_DISPLAY, NULL}}},
+    {"Graphics", {{INI_GRAPHICS, NULL}}},
+    {"Performance", {{INI_PERF, NULL}}},
+    {SNX_VPAD_PAGE,
+     {{g_vpad_ini, backend_ini}, {g_backend_ini, backend_ini}, {g_vpad_shown_ini, backend_ini, SNX_VPAD_BUTTONS}}},
+    {SNX_GAMEPAD_PAGE,
+     {{g_gamepad_ini, backend_ini},
+      {g_gamepad_map_ini, backend_ini, SNX_GAMEPAD_MAP},
+      {g_gamepad_players_ini, backend_ini, SNX_GAMEPAD_PLAYERS}}},
+    {"Network", {{INI_NETWORK, NULL}}},
+    {"Debug", {{INI_DBG, NULL}}},
+    {NULL, {{NULL, NULL}}}};
+
+static const IniOpt* ini_known(const char* k, const IniTable** table) {
+    for (int s = 0; INI_SECS[s].title; s++)
+        for (int t = 0; t < INI_SEC_TABLES && INI_SECS[s].t[t].opts; t++) {
+            const IniOpt* o = ini_find(INI_SECS[s].t[t].opts, k);
+            if (o) {
+                if (table) *table = &INI_SECS[s].t[t];
+                return o;
+            }
+        }
+    return NULL;
+}
+int snx_setting_known(const char* key) { return ini_known(key, NULL) || unattended_known(key); }
+
+static int ini_apply(const char* k, const char* v) {
+    const IniTable* t = NULL;
+    const IniOpt* o = ini_known(k, &t);
+    if (!o) return backend_ini(k, v);
+    if (g_ini_started && (o->flags & INI_STARTUP)) return 1;
+    if (t->apply) return t->apply(k, v);
+    ini_read(o, v);
+    return 1;
+}
+
+static void ini_defaults(void) {
+    for (int s = 0; INI_SECS[s].title; s++)
+        for (int t = 0; t < INI_SEC_TABLES && INI_SECS[s].t[t].opts; t++)
+            for (const IniOpt* o = INI_SECS[s].t[t].opts; o->key; o++)
+                if (o->def && !ini_get(o->key, NULL) && !ini_overridden(o->key)) ini_apply(o->key, o->def);
+}
+static char g_ini_path[1400];
+static u64 g_ini_hash;  
+
+static int file_hash(const char* p, u64* h) {
+    unsigned char buf[4096];
+    size_t n;
+    FILE* f = fopen(p, "rb");
+    if (!f) return -1;
+    *h = 14695981039346656037ull;
+    while ((n = fread(buf, 1, sizeof buf, f)) > 0)
+        for (size_t i = 0; i < n; i++) *h = (*h ^ buf[i]) * 1099511628211ull;
+    fclose(f);
+    return 0;
+}
+
+static int ini_load(const char* path) {
+    size_t size;
+    char* text = (char*)snx_read_file(path, &size);
+    SnxIni ini;
+    char *k, *v;
+    if (!text) return -1;
+    snx_ini_start(&ini, text);  
+    while (snx_ini_next(&ini, &k, &v)) {
+        if (strlen(v) >= INI_LINE) {  
+            WARN_LIMIT(1,
+                       "settings: %s's %s is longer than %d bytes: it is not read, and the rewritten file drops it\n",
+                       path, k, INI_LINE - 1);
+            continue;
+        }
+        ini_store(k, v);
+        if (ini_deprecated(k)) continue;  
+        if (!ini_overridden(k)) ini_apply(k, v);
+    }
+    free(text);
+    return 0;
+}
+
+static void list_words(const IniOpt* o) {
+    int step = o->step > 0 ? o->step : 1;
+    char word[64];
+    if (o->type != INI_INT || (!o->words && (o->lo < 0 || o->hi - o->lo > 16))) return;
+    for (double v = o->lo; v <= o->hi; v += step) {
+        ini_word(o, (int)v, word, sizeof word);
+        printf("%s%d=%s", v > o->lo ? "|" : "", (int)v, word);
+    }
+}
+void ini_list(void) {
+    static const char* const types[] = {"int", "float", "text"};  
+    for (int s = 0; INI_SECS[s].title; s++)
+        for (int t = 0; t < INI_SEC_TABLES && INI_SECS[s].t[t].opts; t++) {
+            const IniTable* table = &INI_SECS[s].t[t];
+            const char* help = "";
+            for (const IniOpt* o = table->opts; o->key; o++) {
+                if (o->help) help = o->help;
+                if (o->flags & INI_IN_GAME) continue;
+                printf("%s%s%s\t%s\t%s\t%s\t%g\t%g\t", INI_SECS[s].title, table->page ? "/" : "",
+                       table->page ? table->page : "", o->key, o->def ? o->def : "", types[o->type], o->lo, o->hi);
+                for (const char* c = help; *c; c++)
+                    if (*c != '\n')
+                        putchar(*c);
+                    else {  
+                        putchar(' ');
+                        c += strspn(c + 1, "; ");
+                    }
+                printf("\t%s\t", o->name ? o->name : "");
+                list_words(o);
+                putchar('\n');
+            }
+        }
+}
+
+static void write_startup_keys(FILE* f) {
+    int col = fprintf(f, ";  These apply when the game starts again: "), n = 0;
+    for (int s = 0; INI_SECS[s].title; s++)
+        for (int t = 0; t < INI_SEC_TABLES && INI_SECS[s].t[t].opts; t++)
+            for (const IniOpt* o = INI_SECS[s].t[t].opts; o->key; o++) {
+                if (!(o->flags & INI_STARTUP)) continue;
+                if (n && col + (int)strlen(o->key) + 2 > 70)
+                    col = fprintf(f, ",\n;  %s", o->key) - 2;
+                else
+                    col += fprintf(f, "%s%s", n ? ", " : "", o->key);
+                n++;
+            }
+    fprintf(f, ".\n");
+}
+
+static int ini_write(void) {
+    char tmp[1450];
+    snprintf(tmp, sizeof tmp, "%s.tmp", g_ini_path);
+    FILE* f = fopen(tmp, "w");
+    if (!f) {
+        WARN_LIMIT(1, "settings: %s could not be written, so changes made in the game are not saved\n", tmp);
+        return -1;
+    }
+    fprintf(f, "; =====================================================================\n");
+    fprintf(f, "; YKW4Recomp settings for %s\n", g_mod && g_mod->title ? g_mod->title : g_exename);
+    fprintf(f, ";  Edit a value and save: most settings apply while the game runs.\n");
+    write_startup_keys(f);
+    fprintf(f, ";  Keys in game: F1 help, F2 the game's menu, F3 screenshot,\n");
+    fprintf(f, ";  F4 FPS limit, F5 thread dump, F11 or Alt+Enter fullscreen.\n");
+    fprintf(f, "; =====================================================================\n");
+    for (int s = 0; INI_SECS[s].title; s++) {
+        fprintf(f, "\n[%s]\n", INI_SECS[s].title);
+        for (int t = 0; t < INI_SEC_TABLES && INI_SECS[s].t[t].opts; t++)
+            for (const IniOpt* o = INI_SECS[s].t[t].opts; o->key; o++) {
+                const char* v = ini_get(o->key, o->def);
+                if (o->help) fprintf(f, "; %s\n", o->help);
+                if (v) fprintf(f, "%s=%s\n", o->key, v);
+            }
+    }
+    int other = 0, deprecated = 0;
+    for (int i = 0; i < g_ini_n; i++)
+        if (!ini_known(g_ini_k[i], NULL) && !ini_deprecated(g_ini_k[i])) {
+            if (!other) {
+                fprintf(f, "\n[Other]\n");
+                other = 1;
+            }
+            fprintf(f, "%s=%s\n", g_ini_k[i], g_ini_v[i]);
+        }
+
+    for (int i = 0; i < g_ini_n; i++)
+        if (ini_deprecated(g_ini_k[i])) {
+            if (!deprecated) ini_deprecated_head(f);
+            deprecated = 1;
+            ini_deprecated_key(f, g_ini_k[i], g_ini_v[i]);
+        }
+
+    if (fclose(f) || plat_replace_file(tmp, g_ini_path)) {  
+        remove(tmp);
+        WARN_LIMIT(1, "settings: %s could not be replaced, so changes made in the game are not saved\n", g_ini_path);
+        return -1;
+    }
+    file_hash(g_ini_path, &g_ini_hash);
+    return 0;
+}
+
+#define INI_MAXS 64  
+static char g_set_k[INI_MAXS][64], g_set_v[INI_MAXS][64];
+static int g_set_n;
+void ini_set(const char* k, const char* v) {
+    if (ini_overridden(k)) return;  
+    ini_store(k, v);
+    int i = 0;
+    while (i < g_set_n && strcmp(g_set_k[i], k)) i++;
+    if (i == INI_MAXS) return;
+    snprintf(g_set_k[i], sizeof g_set_k[i], "%s", k);
+    snprintf(g_set_v[i], sizeof g_set_v[i], "%s", v);
+    if (i == g_set_n) g_set_n++;
+}
+
+static void ini_say_deprecated(const char* path) {
+    const char* keys[INI_MAXK];
+    char note[1024];
+    int n = 0;
+    for (int i = 0; i < g_ini_n; i++)
+        if (ini_deprecated(g_ini_k[i])) keys[n++] = g_ini_k[i];
+    if (ini_deprecated_note(note, sizeof note, path, keys, n)) WARN("%s\n", note);
+}
+void ini_open(const char* path) {
+    snprintf(g_ini_path, sizeof g_ini_path, "%s", path);
+    int missing = ini_load(path) && errno == ENOENT, unreadable = !missing && file_hash(path, &g_ini_hash);
+    ini_defaults();
+    for (int i = 0; i < g_ovr_n; i++)
+        if (!ini_apply(g_ovr_k[i], g_ovr_v[i]) && strcmp(g_ovr_k[i], "game"))
+            WARN("settings: --%s is not a setting, so it does nothing\n", g_ovr_k[i]);
+    if (unreadable)  
+        WARN("settings: %s could not be read, so the defaults apply and it is left as it is\n", path);
+    else {
+        ini_say_deprecated(path);
+        ini_write();
+    }
+    g_ini_started = 1;
+}
+
+void ini_poll(int final) {
+    static u64 seen;  
+    u64 h;
+    int unread, n;
+    if (!g_ini_path[0]) return;
+    unread = file_hash(g_ini_path, &h);
+    if (unread && errno != ENOENT) return;  
+    if (!unread && h != g_ini_hash) {
+        if (h != seen && (!final || !g_set_n)) {  
+            seen = h;
+            return;
+        }
+        n = g_ini_n;
+        g_ini_n = 0;
+        if (ini_load(g_ini_path)) {  
+            g_ini_n = n;
+            if (!final || errno != ENOENT) return;  
+        } else {
+            ini_defaults();
+            for (int i = 0; i < g_set_n; i++) {  
+                ini_store(g_set_k[i], g_set_v[i]);
+                ini_apply(g_set_k[i], g_set_v[i]);
+            }
+            g_ini_hash = h;
+            LOG("settings: %s reloaded\n", g_ini_path);
+        }
+    } else if (!g_set_n)
+        return;
+    if (!ini_write()) g_set_n = 0;
+}

@@ -1,0 +1,35 @@
+name: Bug report
+description: Launcher, preparation, mods, graphics or performance issue
+body:
+  - type: markdown
+    attributes:
+      value: "Do not attach game files, keys, firmware, saves or memory dumps. Redact personal information from logs."
+  - type: input
+    id: version
+    attributes:
+      label: Launcher version or commit
+    validations:
+      required: true
+  - type: textarea
+    id: system
+    attributes:
+      label: Windows version, CPU, GPU, RAM and graphics driver
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps, expected result and actual result
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Game update, DLC, translation, mods and changed settings
+      description: "Version names only. Never upload the files."
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized logs and screenshots
+      description: "For stutters, specify the battle and whether repeating it changes the result."
+

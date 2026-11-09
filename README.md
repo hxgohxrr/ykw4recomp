@@ -1,119 +1,96 @@
-# Yo-kai Watch 4 Recomp
+# YKW4Recomp
 
-A fan-made Windows project for playing Yo-kai Watch 4 on PC. The launcher prepares
-your own game files locally, recompiles the game code, and runs it through a
-modified SwitchRecomp / ScarletNX runtime. It also handles settings, updates,
-RomFS mods, and translations.
+Experimental desktop launcher for a Yo-kai Watch 4 recompilation project.
+It prepares user-supplied extracted files locally, manages RomFS mods and
+translations, and provides settings in Spanish, English and Japanese.
 
-The first public Windows beta is planned for **October 30, 2026**. We're preparing
-a clean launcher package for that release. There are no public downloads yet;
-the files will appear on the [releases page](https://github.com/hxgohxrr/ykw4recomp/releases)
-when they're ready.
+The launcher is integrated into a modified YKW4Recomp runtime. This repository
+includes that runtime and recompiler so the source can be built. It is not a
+launcher-only executable project, an official PC port, or a guarantee of complete
+static recompilation: the runtime retains interpretation paths.
 
-[Website](https://yw4.yo-kaiporters.com) · [Releases](https://github.com/hxgohxrr/ykw4recomp/releases) · [Report a problem](https://github.com/hxgohxrr/ykw4recomp/issues)
+## Beta status
 
-## Before you download
+This is a testing build. Battle stutters and corrupted names/graphics remain
+under investigation. Stable 60 FPS, complete gameplay, and compatibility with
+every update, DLC or mod are not verified. Do not advertise 180 FPS.
 
-You need a 64-bit Windows PC, a Vulkan-capable GPU, and your own compatible game
-dump. This isn't a game download: the launcher does not include the game, updates,
-DLC, console keys, firmware, saves, or a precompiled game module. We can't provide
-those files.
+## What is included
 
-The current setup targets game title ID `010086C00AF7C000`. Don't assume another
-edition or title ID will work. The launcher interface is available in English,
-Spanish, and Japanese; changing it does not translate the game.
+- Native Windows preparation and settings dialogs.
+- A native Linux Python/Tk launcher with the project logo, settings, mods,
+  Discord, mobile-build and local-binding tabs, plus a build/install script
+  (including WSL). See [Linux launcher](docs/LINUX-LAUNCHER.md).
+- Local machine binding integrated into Windows and Linux module loading.
+  New launcher preparations require explicit acceptance; existing ordinary
+  modules are not silently converted. See [binding policy](docs/local-module-binding.md).
+- A desktop mobile-build assistant with explicit responsibility and licensing
+  acceptance. Android builds require SDK/NDK tools; iOS IPA builds require macOS
+  and Xcode. See [mobile build limits and conditions](docs/MOBILE-BUILDS.md).
+- Separate ExeFS/RomFS input and optional already-extracted DLC.
+- An integrated SwitchPrep assistant to select local NSP base/update/DLC packages.
+- Local recompilation and RomFS packing, without embedded game timing patches.
+- Mods/translations from folders or ZIP files, with load priority.
+- An optional GameBanana catalog and configurable Discord Rich Presence.
+- Launcher language JSON sources in `src/nx/runtime/langs/`.
+- YKW4Recomp runtime/recompiler source, licenses and build recipes.
 
-This is still a beta, not a finished PC port. The runtime retains interpretation
-paths, and we haven't verified a complete playthrough or stable performance in
-every area. There are no finished Android, iOS, or macOS releases.
+No game dumps, extracted game content, recompiled game modules, DLC, translations,
+console keys, firmware or personal saves are supplied. The launcher includes
+user-supplied normal/DLC artwork described by its provider as redraws.
+The runtime itself accepts extracted files. The optional Windows SwitchPrep
+assistant prepares local NSP packages using hactool and keys supplied by the
+user. XCI/NSZ/XCZ are not supported by this assistant. No keys are downloaded
+or distributed. This feature is not a legal certification; see
+[supported inputs and licensing](scripts/switchprep/README.md).
 
-## Getting started
+## Beta testers
 
-Once the release is available:
+Extract the complete beta ZIP into a writable folder and run `YKW4.exe`. Keep the
+included DLLs, `langs`, licenses and source archive beside it. Select matching
+ExeFS and RomFS folders with any desired update already applied. Initial setup
+also accepts already-extracted DLC. Alternatively use **Import NSP...** in setup
+or the update dialog: choose a source folder, your local keys, then a base game,
+update and DLC. The assistant returns the prepared paths automatically.
+Preparation requires additional disk space
+and may take time. Cancelling setup should leave supplied originals unchanged.
 
-1. Download the launcher ZIP from Releases and extract the whole archive into a
-   new folder you can write to. Don't run it from inside the ZIP.
-2. Open `YKW4Recomp.exe`. Keep the included libraries, language files, and other
-   package contents beside it.
-3. Use the setup window to select your own base-game NSP and local keys. Updates
-   and DLC are optional inputs. If you already have extracted files, use the
-   ExeFS/RomFS setup option instead.
-4. Let preparation finish. It compiles code and packs game data on your PC, so
-   allow extra disk space and some time for the first setup.
-5. Open the launcher settings before playing if you want to change the display,
-   controls, language, mods, or Discord activity.
+Use Settings to update an existing prepared installation. Back up saves before
+testing. Import translations as RomFS mods; no fan translation is bundled.
+RAR/7z packages must be extracted before import. Code/ExeFS mods are not supported.
 
-The NSP assistant does not accept XCI, NSZ, or XCZ. ExeFS and RomFS must belong to
-the same prepared game version. Back up your saves before testing an update or
-changing a prepared installation.
+Share only the original beta ZIP. Once prepared, the installation contains game
+files and derived modules and must not be redistributed as the launcher package.
+See [beta testing](docs/BETA-TESTING.md) and [build instructions](BUILDING.md).
 
-## Mods and translations
+## Network and privacy
 
-Import a RomFS mod folder or ZIP through the Mods tab. If a download is RAR or 7z,
-extract it first. When two enabled mods replace the same file, the one higher in
-the list wins.
+GameBanana requests occur when using its catalog or downloading a selected mod.
+HTTPS downloads are restricted to GameBanana hosts. Mod files remain subject to
+their authors' permissions; catalog availability does not grant redistribution
+rights. No game files are uploaded by the catalog.
 
-Translations are installed as mods; they aren't included with the launcher. A
-translation may require a particular game update. Check its author's instructions
-rather than assuming any patch will work. Code and ExeFS patches aren't supported
-by the RomFS mod loader.
+Discord Rich Presence is enabled by default and can be disabled in Settings.
+It talks to the local Discord desktop client, which may display the configured
+activity, text and session time to others according to your Discord settings.
+No Discord token is requested. Context is user-configured: location and battle
+detection are not implemented. The application ID is public, not a credential.
+This launcher has no automatic crash-report or telemetry upload.
 
-The optional GameBanana catalog lets you browse and select mods. It doesn't grant
-permission to reupload someone else's work.
+## License and attribution
 
-## Prepared installations
+The fork as a whole is **GPL-3.0-or-later**, with inherited Apache-2.0 portions
+and separately licensed components. Preserve [LICENSE](LICENSE),
+[LICENSE.apache](LICENSE.apache), [NOTICE](NOTICE) and component notices.
 
-Share the original launcher ZIP, not your folder after setup. A prepared folder
-contains game data and generated code, even if it started as a clean launcher.
+**SwitchRecomp by MZ Labs**, copyright 2026 MZ Labs.
+Upstream projects and contributors are listed in [credits](docs/CREDITS.md)
+and [source provenance](docs/SOURCE-PROVENANCE.json).
+Launcher artwork is documented in [LAUNCHER-ARTWORK.md](dist/icons/LAUNCHER-ARTWORK.md).
+**Project logo by Pabl06**, displayed in the launcher and on the website.
+Wimsy fallback resources by Liz, GPL-3.0-or-later. See [credits](docs/CREDITS.md),
+[license review](docs/LICENSE-REVIEW.md) and [local changes](docs/LOCAL-CHANGES.md).
 
-The upcoming Windows launcher binds new preparations to the PC and Windows
-installation that created them. Setup asks before doing this. The binding does
-not upload hardware identifiers or require an activation account. Existing
-unbound installations aren't silently converted.
-
-Replacing a motherboard or reinstalling Windows can invalidate that binding. In
-that case, prepare the game again from your own files in a new folder and handle
-save migration separately. A GPU replacement alone is not part of the identity.
-This is meant to discourage copying prepared installations, not to prove game
-ownership or make copying impossible.
-
-## Known issues
-
-- Some scenes, effects, character names, and transitions still have rendering or
-  compatibility problems.
-- Battle stutter and uneven frame times remain under investigation. Stable
-  60 FPS is not guaranteed.
-- A device-loss crash during scene transitions has been reported on an RX 6600.
-  Results vary between Radeon cards; a successful run on another card doesn't
-  confirm a fix for that crash.
-- Compatibility with every update, DLC, translation, and mod has not been tested.
-
-Diagnostic builds are for testing. They may be much slower than normal builds,
-and a workaround that avoids one crash is not necessarily a fix.
-
-## Reporting a problem
-
-Open an issue with your CPU, GPU, driver version, Windows version, launcher
-version, and the steps that reproduce the problem. Include `YKW4.log`, or the
-preparation log under `setup-work` if setup failed. Say whether mods were enabled
-and which game update you used.
-
-Review logs before posting: local paths may contain your Windows username. Don't
-upload keys, game files, generated game modules, or personal saves to an issue.
-
-The launcher has no automatic crash-report upload. Discord Rich Presence talks
-to the local Discord client and can be disabled in Settings. GameBanana network
-requests are made when using its catalog or downloading a selected mod.
-
-## Credits
-The Spanish translation option uses the work of
-**REY3DS / YKW4_ES** and its contributors; translation patches remain separate
-from this project.
-
-The modified runtime is GPL-3.0-or-later, with inherited Apache-2.0 portions and
-separately licensed dependencies. Keep the source and license notices that
-accompany a launcher release. Those licenses do not grant rights to the game's
-content or trademarks.
-
-Yo-kai Watch belongs to LEVEL-5. This is an unofficial fan project, not an
-official PC release, and is not affiliated with LEVEL-5 or Nintendo.
+This is an unofficial project and is not affiliated with Nintendo or LEVEL-5.
+The source licenses grant no rights to game content or trademarks. Excluding
+game files is a distribution precaution, not a certification of legal status.

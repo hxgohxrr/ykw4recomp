@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=YKW4Recomp
+Comment=Runs Switch games recompiled to native code
+Exec=YKW4Recomp
+Icon=wimsy
+Categories=Game;Emulator;
+Keywords=Switch;recompiler;
+Terminal=false
+
+
+X-AppImage-Integrate=false

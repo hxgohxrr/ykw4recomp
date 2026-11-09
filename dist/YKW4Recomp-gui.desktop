@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=YKW4Recomp Launcher
+GenericName=Game launcher
+Comment=Picks a game and runs it recompiled to native code
+Exec=YKW4Recomp-gui
+Icon=wimsy
+Categories=Game;Emulator;
+Keywords=recompiler;launcher;
+Terminal=false
+
+StartupWMClass=YKW4Recomp-gui

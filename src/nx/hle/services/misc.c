@@ -1,0 +1,758 @@
+/* Modified for YKW4 Launcher. See docs/LOCAL-CHANGES.md (2026-10-24). */
+/* SwitchRecomp - Copyright 2026 MZ Labs
+   Licensed under the Apache License 2.0. See LICENSE.apache and NOTICE;
+   any copy or derived work must keep the credit to SwitchRecomp by MZ Labs.
+   This fork's changes are under GPL-3.0-or-later, the license of the fork as a whole (LICENSE). */
+
+#include "nx/hle/services/services_int.h"
+#include "nx/hle/filesystem/fs.h"
+#include "hle/services/misc.swipc.inc"
+#include <openssl/rand.h>
+
+static int nn_apm_ISession_GetPerformanceConfiguration(SvcObj* self, nn_apm_PerformanceMode mode,
+                                                       nn_apm_PerformanceConfiguration* config) {
+    *config = 0x00020003;
+    return 0;
+}
+static int nn_apm_IManager_OpenSession(SvcObj* self, SvcObj** session) {
+    *session = nn_apm_ISession_new(0);
+    return 0;
+}
+static int nn_apm_IManager_GetPerformanceMode(SvcObj* self, nn_apm_PerformanceMode* mode) {
+    *mode = g_opt_docked;
+    return 0;
+}
+SvcObj* new_apm(void) { return nn_apm_IManager_new(0); }
+
+static u64 uleb128(const u8* p, u64 s, u64* i) {
+    u64 v = 0;
+    for (int sh = 0; *i < s && sh < 64; sh += 7) {
+        u8 b = p[(*i)++];
+        v |= (u64)(b & 0x7F) << sh;
+        if (!(b & 0x80)) break;
+    }
+    return v;
+}
+static int nn_lm_ILogger_Log(SvcObj* self, IpcBuf message) {
+    u64 s = message.size;
+    if (message.addr && s > 0x18) {  
+        u8* p = GP(message.addr);
+        u64 i = 0x18;
+        char msg[1024];
+        u64 n = 0;
+        while (i < s) {
+            u64 t = uleb128(p, s, &i), l = uleb128(p, s, &i);
+            if (l > s - i) break;
+            if (t == 2 && n + l < 1000) {  
+                memcpy(msg + n, p + i, l);
+                n += l;
+            }
+            i += l;
+        }
+        if (n) {
+            msg[n] = 0;
+            LOG("[game lm] %s%s", msg, (msg[n - 1] == '\n') ? "" : "\n");
+        }
+    }
+    return 0;
+}
+static int nn_lm_ILogService_OpenLogger(SvcObj* self, u64 pid, SvcObj** logger) {
+    *logger = nn_lm_ILogger_new(0);
+    return 0;
+}
+SvcObj* new_lm(void) { return nn_lm_ILogService_new(0); }
+
+static int nn_pctl_detail_ipc_IParentalControlService_IsStereoVisionPermitted(SvcObj* self, u8* permitted) {
+    *permitted = 1;
+    return 0;
+}
+static int nn_pctl_detail_ipc_IParentalControlService_GetSynchronizationEvent(SvcObj* self, u32* event) {
+    return new_event(event, "pctl ev", 0);
+}
+static int nn_pctl_detail_ipc_IParentalControlService_GetPlayTimerEventToRequestSuspension(SvcObj* self, u32* event) {
+    return new_event(event, "pctl ev", 0);
+}
+static int nn_pctl_detail_ipc_IParentalControlService_GetUnlinkedEvent(SvcObj* self, u32* event) {
+    return new_event(event, "pctl ev", 0);
+}
+static int nn_pctl_detail_ipc_IParentalControlServiceFactory_CreateService(SvcObj* self, u64 pid, SvcObj** service) {
+    *service = nn_pctl_detail_ipc_IParentalControlService_new(0);
+    return 0;
+}
+static int nn_pctl_detail_ipc_IParentalControlServiceFactory_CreateServiceWithoutInitialize(SvcObj* self, u64 pid,
+                                                                                            SvcObj** service) {
+    *service = nn_pctl_detail_ipc_IParentalControlService_new(0);
+    return 0;
+}
+SvcObj* new_pctl(void) { return nn_pctl_detail_ipc_IParentalControlServiceFactory_new(0); }
+
+static int nn_friends_detail_ipc_IFriendService_GetCompletionEvent(SvcObj* self, u32* event) {
+    return new_event(event, "friend", 0);
+}
+static int nn_friends_detail_ipc_INotificationService_GetEvent(SvcObj* self, u32* event) {
+    return new_event(event, "friend notif", 0);
+}
+static int nn_friends_detail_ipc_INotificationService_Pop(SvcObj* self,
+                                                          nn_friends_detail_ipc_SizedNotificationInfo* info) {
+    return RC(121, 15);  
+}
+static int nn_friends_detail_ipc_IServiceCreator_CreateFriendService(SvcObj* self, SvcObj** service) {
+    *service = nn_friends_detail_ipc_IFriendService_new(0);
+    return 0;
+}
+static int nn_friends_detail_ipc_IServiceCreator_CreateNotificationService(SvcObj* self, const nn_account_Uid* uid,
+                                                                           SvcObj** service) {
+    *service = nn_friends_detail_ipc_INotificationService_new(0);
+    return 0;
+}
+static int nn_friends_detail_ipc_IServiceCreator_CreateDaemonSuspendSessionService(SvcObj* self, SvcObj** service) {
+    *service = nn_friends_detail_ipc_IDaemonSuspendSessionService_new(0);
+    return 0;
+}
+SvcObj* new_friend(void) { return nn_friends_detail_ipc_IServiceCreator_new(0); }
+
+static int nn_ns_detail_IServiceGetterInterface_GetDynamicRightsInterface(SvcObj* self, SvcObj** iface) {
+    *iface = nn_ns_detail_IDynamicRightsInterface_new(0);
+    return 0;
+}
+static int nn_ns_detail_IServiceGetterInterface_GetReadOnlyApplicationControlDataInterface(SvcObj* self,
+                                                                                           SvcObj** iface) {
+    *iface = nn_ns_detail_IReadOnlyApplicationControlDataInterface_new(0);
+    return 0;
+}
+static int nn_ns_detail_IServiceGetterInterface_GetReadOnlyApplicationRecordInterface(SvcObj* self, SvcObj** iface) {
+    *iface = nn_ns_detail_IReadOnlyApplicationRecordInterface_new(0);
+    return 0;
+}
+static int nn_ns_detail_IServiceGetterInterface_GetECommerceInterface(SvcObj* self, SvcObj** iface) {
+    *iface = nn_ns_detail_IECommerceInterface_new(0);
+    return 0;
+}
+static int nn_ns_detail_IServiceGetterInterface_GetApplicationVersionInterface(SvcObj* self, SvcObj** iface) {
+    *iface = nn_ns_detail_IApplicationVersionInterface_new(0);
+    return 0;
+}
+static int nn_ns_detail_IServiceGetterInterface_GetFactoryResetInterface(SvcObj* self, SvcObj** iface) {
+    *iface = nn_ns_detail_IFactoryResetInterface_new(0);
+    return 0;
+}
+static int nn_ns_detail_IServiceGetterInterface_GetAccountProxyInterface(SvcObj* self, SvcObj** iface) {
+    *iface = nn_ns_detail_IAccountProxyInterface_new(0);
+    return 0;
+}
+static int nn_ns_detail_IServiceGetterInterface_GetApplicationManagerInterface(SvcObj* self, SvcObj** iface) {
+    *iface = nn_ns_detail_IApplicationManagerInterface_new(0);
+    return 0;
+}
+static int nn_ns_detail_IServiceGetterInterface_GetDownloadTaskInterface(SvcObj* self, SvcObj** iface) {
+    *iface = nn_ns_detail_IDownloadTaskInterface_new(0);
+    return 0;
+}
+static int nn_ns_detail_IServiceGetterInterface_GetContentManagementInterface(SvcObj* self, SvcObj** iface) {
+    *iface = nn_ns_detail_IContentManagementInterface_new(0);
+    return 0;
+}
+static int nn_ns_detail_IServiceGetterInterface_GetDocumentInterface(SvcObj* self, SvcObj** iface) {
+    *iface = nn_ns_detail_IDocumentInterface_new(0);
+    return 0;
+}
+SvcObj* new_ns(void) { return nn_ns_detail_IServiceGetterInterface_new(0); }
+
+SvcObj* new_prepo(void) { return nn_prepo_detail_ipc_IPrepoService_new(0); }
+static int nn_psm_IPsmSession_BindStateChangeEvent(SvcObj* self, u32* event) { return new_event(event, "psm", 0); }
+static int nn_psm_IPsmServer_GetBatteryChargePercentage(SvcObj* self, u32* percentage) {
+    *percentage = 100;
+    return 0;
+}
+static int nn_psm_IPsmServer_GetChargerType(SvcObj* self, nn_psm_ChargerType* charger_type) {
+    *charger_type = 1;
+    return 0;
+}
+static int nn_psm_IPsmServer_OpenSession(SvcObj* self, SvcObj** session) {
+    *session = nn_psm_IPsmSession_new(0);
+    return 0;
+}
+SvcObj* new_psm(void) { return nn_psm_IPsmServer_new(0); }
+static int nn_fatalsrv_IService_ThrowFatal(SvcObj* self, u32 result, u64 pid) {
+    fatal("The game called fatal:u (code %x)", result);
+    return 0;
+}
+static int nn_fatalsrv_IService_ThrowFatalWithPolicy(SvcObj* self, u32 result, u32 policy, u64 pid) {
+    fatal("The game called fatal:u (code %x)", result);
+    return 0;
+}
+static int nn_fatalsrv_IService_ThrowFatalWithCpuContext(SvcObj* self, u32 result, u32 policy, u64 pid,
+                                                         IpcBuf context) {
+    fatal("The game called fatal:u (code %x)", result);
+    return 0;
+}
+SvcObj* new_fatal(void) { return nn_fatalsrv_IService_new(0); }
+#define MM_REQ_MAX 32
+static struct {
+    struct {
+        u32 id, module, rate;
+    } mm[MM_REQ_MAX];  
+    u32 mm_next;
+    KShmem* irs_shm;  
+} misc = {.mm_next = 1};
+
+static int random_fill(IpcBuf b) {
+    if (!b.addr) return 0;
+    u8* d = GP(b.addr);
+    for (u64 at = 0; at < b.size;) {
+        int n = b.size - at > 1u << 30 ? 1 << 30 : (int)(b.size - at);
+        if (RAND_bytes(d + at, n) != 1) fatal("csrng: OpenSSL has no random source\n");
+        at += (u64)n;
+    }
+    return 0;
+}
+static int nn_spl_detail_IRandomInterface_GenerateRandomBytes(SvcObj* self, IpcBuf data) { return random_fill(data); }
+SvcObj* new_csrng(void) { return nn_spl_detail_IRandomInterface_new(0); }
+
+static int mm_find(u32 key, int by_module) {  
+    for (int i = 0; i < MM_REQ_MAX; i++)
+        if (misc.mm[i].id && (by_module ? misc.mm[i].module == key : misc.mm[i].id == key)) return i;
+    return -1;
+}
+static u32 mm_initialize(u32 module) {
+    pm_lock(&g_klock);
+    u32 id = misc.mm_next++;
+    int i = 0;
+    while (i < MM_REQ_MAX && misc.mm[i].id) i++;
+    if (i < MM_REQ_MAX) {
+        misc.mm[i].id = id;
+        misc.mm[i].module = module;
+        misc.mm[i].rate = 0;
+    }
+    pm_unlock(&g_klock);
+    if (i == MM_REQ_MAX) WARN("mm:u: more than %d clock requests\n", MM_REQ_MAX);
+    return id;
+}
+static int mm_finalize(u32 key, int by_module) {
+    pm_lock(&g_klock);
+    int i = mm_find(key, by_module);
+    if (i >= 0) misc.mm[i].id = 0;
+    pm_unlock(&g_klock);
+    return 0;
+}
+static int mm_set(u32 key, int by_module, u32 min) {
+    pm_lock(&g_klock);
+    int i = mm_find(key, by_module);
+    if (i >= 0) misc.mm[i].rate = min;
+    pm_unlock(&g_klock);
+    return 0;
+}
+static int mm_get(u32 key, int by_module, u32* current) {
+    pm_lock(&g_klock);
+    int i = mm_find(key, by_module);
+    *current = i >= 0 ? misc.mm[i].rate : 0;
+    pm_unlock(&g_klock);
+    return 0;
+}
+static int nn_mmnv_IRequest_InitializeOld(SvcObj* self, nn_mmnv_Module module, nn_mmnv_Priority priority,
+                                          u32 event_clear_mode) {
+    mm_initialize(module);
+    return 0;
+}
+static int nn_mmnv_IRequest_FinalizeOld(SvcObj* self, nn_mmnv_Module module) { return mm_finalize(module, 1); }
+static int nn_mmnv_IRequest_SetAndWaitOld(SvcObj* self, nn_mmnv_Module module, nn_mmnv_Setting min,
+                                          nn_mmnv_Setting max) {
+    return mm_set(module, 1, min);
+}
+static int nn_mmnv_IRequest_GetOld(SvcObj* self, nn_mmnv_Module module, nn_mmnv_Setting* current) {
+    return mm_get(module, 1, current);
+}
+static int nn_mmnv_IRequest_Initialize(SvcObj* self, nn_mmnv_Module module, nn_mmnv_Priority priority,
+                                       u32 event_clear_mode, u32* request_id) {
+    *request_id = mm_initialize(module);
+    return 0;
+}
+static int nn_mmnv_IRequest_Finalize(SvcObj* self, u32 request_id) { return mm_finalize(request_id, 0); }
+static int nn_mmnv_IRequest_SetAndWait(SvcObj* self, u32 request_id, nn_mmnv_Setting min, nn_mmnv_Setting max) {
+    return mm_set(request_id, 0, min);
+}
+static int nn_mmnv_IRequest_Get(SvcObj* self, u32 request_id, nn_mmnv_Setting* current) {
+    return mm_get(request_id, 0, current);
+}
+SvcObj* new_mm(void) { return nn_mmnv_IRequest_new(0); }
+
+#define NFP_DEVICE_NOT_FOUND RC(115, 64)
+#define NFP_NOT_INITIALIZED  RC(115, 77)
+static void nfp_user_destroy(SvcObj* o) { kobj_unref(&((KEvent*)(size_t)o->u[1])->o); }
+static SvcObj* nfp_user_init(SvcObj* o) {
+    o->u[1] = (u64)(size_t)owned_event("nfp availability");
+    o->destroy = nfp_user_destroy;
+    return o;
+}
+static int nfp_set_state(SvcObj* self, u32 state) {
+    __atomic_store_n(&self->u[0], state, __ATOMIC_RELAXED);
+    return 0;
+}
+static u32 nfp_state(SvcObj* self) { return (u32)__atomic_load_n(&self->u[0], __ATOMIC_RELAXED); }
+static int nfp_list_devices(SvcObj* self) { return nfp_state(self) ? NFP_DEVICE_NOT_FOUND : NFP_NOT_INITIALIZED; }
+static int nfp_availability_event(SvcObj* self, u32* event) {
+    *event = ev_handle((KEvent*)(size_t)self->u[1]);
+    return 0;
+}
+static int nn_nfp_detail_IUser_Initialize(SvcObj* self, u64 applet_resource_user_id, u64 pid, IpcBuf mcu_version_data) {
+    return nfp_set_state(self, 1);
+}
+static int nn_nfp_detail_IUser_Finalize(SvcObj* self) { return nfp_set_state(self, 0); }
+static int nn_nfp_detail_IUser_ListDevices(SvcObj* self, IpcBuf devices, i32* count) { return nfp_list_devices(self); }
+static int nn_nfp_detail_IUser_StartDetection(SvcObj* self, const nn_nfc_DeviceHandle* device_handle) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfp_detail_IUser_StopDetection(SvcObj* self, const nn_nfc_DeviceHandle* device_handle) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfp_detail_IUser_Mount(SvcObj* self, const nn_nfc_DeviceHandle* device_handle, u32 model_type,
+                                     u32 mount_target) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfp_detail_IUser_Unmount(SvcObj* self, const nn_nfc_DeviceHandle* device_handle) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfp_detail_IUser_OpenApplicationArea(SvcObj* self, const nn_nfc_DeviceHandle* device_handle,
+                                                   u32 access_id) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfp_detail_IUser_GetApplicationArea(SvcObj* self, const nn_nfc_DeviceHandle* device_handle, IpcBuf data,
+                                                  u32* size) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfp_detail_IUser_SetApplicationArea(SvcObj* self, const nn_nfc_DeviceHandle* device_handle, IpcBuf data) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfp_detail_IUser_Flush(SvcObj* self, const nn_nfc_DeviceHandle* device_handle) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfp_detail_IUser_Restore(SvcObj* self, const nn_nfc_DeviceHandle* device_handle) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfp_detail_IUser_CreateApplicationArea(SvcObj* self, const nn_nfc_DeviceHandle* device_handle,
+                                                     u32 access_id, IpcBuf data) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfp_detail_IUser_GetTagInfo(SvcObj* self, const nn_nfc_DeviceHandle* device_handle, IpcBuf info) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfp_detail_IUser_GetRegisterInfo(SvcObj* self, const nn_nfc_DeviceHandle* device_handle, IpcBuf info) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfp_detail_IUser_GetCommonInfo(SvcObj* self, const nn_nfc_DeviceHandle* device_handle, IpcBuf info) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfp_detail_IUser_GetModelInfo(SvcObj* self, const nn_nfc_DeviceHandle* device_handle, IpcBuf info) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfp_detail_IUser_AttachActivateEvent(SvcObj* self, const nn_nfc_DeviceHandle* device_handle, u32* event) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfp_detail_IUser_AttachDeactivateEvent(SvcObj* self, const nn_nfc_DeviceHandle* device_handle,
+                                                     u32* event) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfp_detail_IUser_GetState(SvcObj* self, u32* state) {
+    *state = nfp_state(self);
+    return 0;
+}
+
+static int nn_nfp_detail_IUser_GetDeviceState(SvcObj* self, const nn_nfc_DeviceHandle* device_handle, u32* state) {
+    *state = 6;
+    return 0;
+}
+static int nn_nfp_detail_IUser_GetNpadId(SvcObj* self, const nn_nfc_DeviceHandle* device_handle, u32* npad_id) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfp_detail_IUser_GetApplicationAreaSize(SvcObj* self, const nn_nfc_DeviceHandle* device_handle,
+                                                      u32* size) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfp_detail_IUser_AttachAvailabilityChangeEvent(SvcObj* self, u32* event) {
+    return nfp_availability_event(self, event);
+}
+static int nn_nfp_detail_IUser_RecreateApplicationArea(SvcObj* self, const nn_nfc_DeviceHandle* device_handle,
+                                                       u32 access_id, IpcBuf data) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfp_detail_IUserManager_CreateUserInterface(SvcObj* self, SvcObj** user) {
+    *user = nfp_user_init(nn_nfp_detail_IUser_new(0));
+    return 0;
+}
+SvcObj* new_nfp(void) { return nn_nfp_detail_IUserManager_new(0); }
+static int nn_nfc_detail_IUser_InitializeOld(SvcObj* self, u64 applet_resource_user_id, u64 pid,
+                                             IpcBuf mcu_version_data) {
+    return nfp_set_state(self, 1);
+}
+static int nn_nfc_detail_IUser_FinalizeOld(SvcObj* self) { return nfp_set_state(self, 0); }
+static int nn_nfc_detail_IUser_GetStateOld(SvcObj* self, u32* state) {
+    *state = nfp_state(self);
+    return 0;
+}
+
+static int nn_nfc_detail_IUser_IsNfcEnabledOld(SvcObj* self, u8* enabled) {
+    *enabled = 1;
+    return 0;
+}
+static int nn_nfc_detail_IUser_Initialize(SvcObj* self, u64 applet_resource_user_id, u64 pid, IpcBuf mcu_version_data) {
+    return nfp_set_state(self, 1);
+}
+static int nn_nfc_detail_IUser_Finalize(SvcObj* self) { return nfp_set_state(self, 0); }
+static int nn_nfc_detail_IUser_GetState(SvcObj* self, u32* state) {
+    *state = nfp_state(self);
+    return 0;
+}
+static int nn_nfc_detail_IUser_IsNfcEnabled(SvcObj* self, u8* enabled) {
+    *enabled = 1;
+    return 0;
+}
+static int nn_nfc_detail_IUser_ListDevices(SvcObj* self, IpcBuf devices, i32* count) { return nfp_list_devices(self); }
+static int nn_nfc_detail_IUser_GetDeviceState(SvcObj* self, const nn_nfc_DeviceHandle* device_handle, u32* state) {
+    *state = 6;
+    return 0;
+}
+static int nn_nfc_detail_IUser_GetNpadId(SvcObj* self, const nn_nfc_DeviceHandle* device_handle, u32* npad_id) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfc_detail_IUser_AttachAvailabilityChangeEvent(SvcObj* self, u32* event) {
+    return nfp_availability_event(self, event);
+}
+static int nn_nfc_detail_IUser_StartDetection(SvcObj* self, const nn_nfc_DeviceHandle* device_handle, u32 protocol) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfc_detail_IUser_StopDetection(SvcObj* self, const nn_nfc_DeviceHandle* device_handle) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfc_detail_IUser_GetTagInfo(SvcObj* self, const nn_nfc_DeviceHandle* device_handle, IpcBuf info) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfc_detail_IUser_AttachActivateEvent(SvcObj* self, const nn_nfc_DeviceHandle* device_handle, u32* event) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfc_detail_IUser_AttachDeactivateEvent(SvcObj* self, const nn_nfc_DeviceHandle* device_handle,
+                                                     u32* event) {
+    return NFP_DEVICE_NOT_FOUND;
+}
+static int nn_nfc_detail_IUserManager_CreateUserInterface(SvcObj* self, SvcObj** user) {
+    *user = nfp_user_init(nn_nfc_detail_IUser_new(0));
+    return 0;
+}
+SvcObj* new_nfc(void) { return nn_nfc_detail_IUserManager_new(0); }
+SvcObj* new_caps(void) { return nn_capsrv_sf_IAlbumApplicationService_new(0); }
+
+static int nn_bcat_detail_ipc_IDeliveryCacheProgressService_GetEvent(SvcObj* self, u32* event) {
+    return new_event(event, "bcat progress", 1);
+}
+static int nn_bcat_detail_ipc_IDeliveryCacheProgressService_GetImpl(SvcObj* self, IpcBuf impl) {  
+    if (impl.addr && impl.size) {
+        memset(GP(impl.addr), 0, impl.size);
+        if (impl.size >= 8) {
+            u32 st = 9, rs = 0;
+            memcpy(GP(impl.addr), &st, 4);
+            memcpy(GP(impl.addr) + 4, &rs, 4);
+        }
+    }
+    return 0;
+}
+static int nn_bcat_detail_ipc_IDeliveryCacheFileService_Open(SvcObj* self, const nn_bcat_DirectoryName* directory_name,
+                                                             const nn_bcat_FileName* file_name) {
+    return RC(122, 2);  
+}
+static int nn_bcat_detail_ipc_IDeliveryCacheStorageService_CreateFileService(SvcObj* self, SvcObj** file) {
+    *file = nn_bcat_detail_ipc_IDeliveryCacheFileService_new(0);
+    return 0;
+}
+static int nn_bcat_detail_ipc_IDeliveryCacheStorageService_CreateDirectoryService(SvcObj* self, SvcObj** directory) {
+    *directory = nn_bcat_detail_ipc_IDeliveryCacheDirectoryService_new(0);
+    return 0;
+}
+static int sync_progress(SvcObj** progress) {
+    *progress = nn_bcat_detail_ipc_IDeliveryCacheProgressService_new(0);
+    return 0;
+}
+static int nn_bcat_detail_ipc_IBcatService_RequestSyncDeliveryCache(SvcObj* self, SvcObj** progress) {
+    return sync_progress(progress);
+}
+static int nn_bcat_detail_ipc_IBcatService_RequestSyncDeliveryCacheWithDirectoryName(
+    SvcObj* self, const nn_bcat_DirectoryName* directory_name, SvcObj** progress) {
+    return sync_progress(progress);
+}
+static int nn_bcat_detail_ipc_IBcatService_RequestSyncDeliveryCacheWithApplicationId(SvcObj* self,
+                                                                                     nn_ApplicationId application_id,
+                                                                                     u32 unknown, SvcObj** progress) {
+    return sync_progress(progress);
+}
+static int nn_bcat_detail_ipc_IBcatService_RequestSyncDeliveryCacheWithApplicationIdAndDirectoryName(
+    SvcObj* self, nn_ApplicationId application_id, u32 unknown, const nn_bcat_DirectoryName* directory_name,
+    SvcObj** progress) {
+    return sync_progress(progress);
+}
+static int nn_bcat_detail_ipc_IBcatService_GetDeliveryCacheStorageUpdateNotifier(SvcObj* self,
+                                                                                 nn_ApplicationId application_id,
+                                                                                 SvcObj** notifier) {
+    *notifier = nn_bcat_detail_ipc_INotifierService_new(0);
+    return 0;
+}
+static int nn_bcat_detail_ipc_IBcatService_RequestSuspendDeliveryTask(SvcObj* self, nn_ApplicationId application_id,
+                                                                      SvcObj** suspension) {
+    *suspension = nn_bcat_detail_ipc_IDeliveryTaskSuspensionService_new(0);
+    return 0;
+}
+static int nn_bcat_detail_ipc_INotifierService_GetEvent(SvcObj* self, u32* event) {
+    return new_event(event, "bcat storage update", 0);
+}
+static int nn_bcat_detail_ipc_IServiceCreator_CreateBcatService(SvcObj* self, u64 pid, SvcObj** service) {
+    *service = nn_bcat_detail_ipc_IBcatService_new(0);
+    return 0;
+}
+static int nn_bcat_detail_ipc_IServiceCreator_CreateDeliveryCacheStorageService(SvcObj* self, u64 pid,
+                                                                                SvcObj** service) {
+    *service = nn_bcat_detail_ipc_IDeliveryCacheStorageService_new(0);
+    return 0;
+}
+static int nn_bcat_detail_ipc_IServiceCreator_CreateDeliveryCacheStorageServiceWithApplicationId(
+    SvcObj* self, nn_ApplicationId application_id, SvcObj** service) {
+    *service = nn_bcat_detail_ipc_IDeliveryCacheStorageService_new(0);
+    return 0;
+}
+SvcObj* new_bcat(void) { return nn_bcat_detail_ipc_IServiceCreator_new(0); }
+static int nn_ec_IPurchaseEventManager_GetPurchasedEventReadableHandle(SvcObj* self, u32* event) {
+    return new_event(event, "aoc purchase", 0);
+}
+static int nn_ec_IPurchaseEventManager_PopPurchasedProductInfo(SvcObj* self,
+                                                               nn_ec_srv_detail_PurchasedProductInfo* info) {
+    return RC(164, 400);  
+}
+static int nn_ec_IPurchaseEventManager_PopPurchasedProductInfoWithUid(SvcObj* self, const nn_account_Uid* uid,
+                                                                      nn_ec_srv_detail_PurchasedProductInfo* info) {
+    return RC(164, 400);
+}
+
+static u64 aoc_base_id(void) { return (g_title_id & ~0xFFFull) + 0x1000; }
+static u64 aoc_mounted[64];
+static int aoc_present(i32 index) {
+    u32 indices[4096], n;
+    if (index < 0 || index > 4095) return 0;
+    n = fs_addon_indices(indices, 4096);
+    for (u32 i = 0; i < n; ++i) if (indices[i] == (u32)index) return 1;
+    return 0;
+}
+static int nn_aocsrv_detail_IAddOnContentManager_CountAddOnContentByApplicationId(
+    SvcObj* self, nn_ncm_ApplicationId application_id, i32* count) {
+    u32 indices[4096];
+    *count = application_id == g_title_id ? (i32)fs_addon_indices(indices, 4096) : 0;
+    LOG("aoc: %d installed DLC images\n", *count);
+    return 0;
+}
+static int nn_aocsrv_detail_IAddOnContentManager_CountAddOnContent(SvcObj* self, u64 pid, i32* count) {
+    return nn_aocsrv_detail_IAddOnContentManager_CountAddOnContentByApplicationId(self, g_title_id, count);
+}
+static int nn_aocsrv_detail_IAddOnContentManager_ListAddOnContentByApplicationId(
+    SvcObj* self, i32 offset, i32 count, nn_ncm_ApplicationId application_id, IpcBuf output, i32* out_count) {
+    u32 indices[4096], n, take;
+    *out_count = 0;
+    if (offset < 0 || count < 0 || (count && !output.addr)) return RC(2, 1002);
+    if (application_id != g_title_id) return 0;
+    n = fs_addon_indices(indices, 4096);
+    if ((u32)offset >= n) return 0;
+    take = n - (u32)offset;
+    if (take > (u32)count) take = (u32)count;
+    if (take > output.size / sizeof(u32)) take = (u32)(output.size / sizeof(u32));
+    if (take) memcpy(GP(output.addr), indices + offset, (size_t)take * sizeof(u32));
+    *out_count = (i32)take;
+    return 0;
+}
+static int nn_aocsrv_detail_IAddOnContentManager_ListAddOnContent(
+    SvcObj* self, i32 offset, i32 count, u64 pid, IpcBuf output, i32* out_count) {
+    return nn_aocsrv_detail_IAddOnContentManager_ListAddOnContentByApplicationId(
+        self, offset, count, g_title_id, output, out_count);
+}
+static int nn_aocsrv_detail_IAddOnContentManager_PrepareAddOnContentByApplicationId(
+    SvcObj* self, i32 index, nn_ncm_ApplicationId application_id) {
+    return application_id == g_title_id && aoc_present(index) ? 0 : RC(2, 1002);
+}
+static int nn_aocsrv_detail_IAddOnContentManager_PrepareAddOnContent(SvcObj* self, i32 index, u64 pid) {
+    return nn_aocsrv_detail_IAddOnContentManager_PrepareAddOnContentByApplicationId(self, index, g_title_id);
+}
+static int nn_aocsrv_detail_IAddOnContentManager_NotifyMountAddOnContent(
+    SvcObj* self, nn_ncm_DataId data_id, u64 pid) {
+    if ((data_id & ~0xFFFull) != aoc_base_id() || !aoc_present((i32)(data_id & 0xFFF))) return RC(2, 1002);
+    u32 index = (u32)(data_id & 0xFFF);
+    __atomic_fetch_or(&aoc_mounted[index / 64], 1ull << (index % 64), __ATOMIC_RELAXED);
+    LOG("aoc: mounted DLC %016llx\n", (unsigned long long)data_id);
+    return 0;
+}
+static int nn_aocsrv_detail_IAddOnContentManager_NotifyUnmountAddOnContent(
+    SvcObj* self, nn_ncm_DataId data_id, u64 pid) {
+    if ((data_id & ~0xFFFull) != aoc_base_id()) return RC(2, 1002);
+    u32 index = (u32)(data_id & 0xFFF);
+    __atomic_fetch_and(&aoc_mounted[index / 64], ~(1ull << (index % 64)), __ATOMIC_RELAXED);
+    return 0;
+}
+static int nn_aocsrv_detail_IAddOnContentManager_IsAddOnContentMountedForDebug(
+    SvcObj* self, nn_ncm_DataId data_id, u64 pid, u8* mounted) {
+    u32 index = (u32)(data_id & 0xFFF);
+    *mounted = (data_id & ~0xFFFull) == aoc_base_id() &&
+        ((__atomic_load_n(&aoc_mounted[index / 64], __ATOMIC_RELAXED) >> (index % 64)) & 1);
+    return 0;
+}
+static int nn_aocsrv_detail_IAddOnContentManager_GetAddOnContentBaseIdByApplicationId(
+    SvcObj* self, nn_ncm_ApplicationId application_id, u64* base_id) {
+    *base_id = aoc_base_id();
+    return 0;
+}
+static int nn_aocsrv_detail_IAddOnContentManager_GetAddOnContentBaseId(SvcObj* self, u64 pid, u64* base_id) {
+    *base_id = aoc_base_id();
+    return 0;
+}
+static int nn_aocsrv_detail_IAddOnContentManager_GetAddOnContentListChangedEvent(SvcObj* self, u32* event) {
+    return new_event(event, "aoc", 0);
+}
+static int nn_aocsrv_detail_IAddOnContentManager_GetAddOnContentListChangedEventWithProcessId(SvcObj* self, u64 pid,
+                                                                                              u32* event) {
+    return new_event(event, "aoc", 0);
+}
+static int nn_aocsrv_detail_IAddOnContentManager_CreateEcPurchasedEventManager(SvcObj* self, SvcObj** manager) {
+    *manager = nn_ec_IPurchaseEventManager_new(0);
+    return 0;
+}
+static int nn_aocsrv_detail_IAddOnContentManager_CreatePermanentEcPurchasedEventManager(SvcObj* self, u64 pid,
+                                                                                        SvcObj** manager) {
+    *manager = nn_ec_IPurchaseEventManager_new(0);
+    return 0;
+}
+
+static int nn_ec_IContentsServiceManager_RequestContentsAuthorizationToken(SvcObj* self, const u8* nonce, u64 pid,
+                                                                           IpcBuf data, u32* event, SvcObj** async) {
+    return RC(110, 300);
+}
+static int nn_aocsrv_detail_IAddOnContentManager_CreateContentsServiceManager(SvcObj* self, SvcObj** manager) {
+    *manager = nn_ec_IContentsServiceManager_new(0);
+    return 0;
+}
+SvcObj* new_aoc(void) { return nn_aocsrv_detail_IAddOnContentManager_new(0); }
+
+static int nn_irsensor_IIrSensorServer_GetIrsensorSharedMemoryHandle(SvcObj* self, u64 aruid, u32* shared_memory) {
+    KShmem* s = __atomic_load_n(&misc.irs_shm, __ATOMIC_ACQUIRE);
+    if (!s) {
+        KShmem* n = kshmem_new(0x8000, "irs");
+        kobj_ref(&n->o);
+        if (__atomic_compare_exchange_n(&misc.irs_shm, &s, n, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
+            s = n;
+        else
+            kobj_unref(&n->o);  
+    }
+    *shared_memory = h_new(&s->o);
+    return 0;
+}
+SvcObj* new_irs(void) { return nn_irsensor_IIrSensorServer_new(0); }
+static int nn_mii_detail_IStaticService_GetDatabaseService(SvcObj* self, i32 key_code, SvcObj** database) {
+    *database = nn_mii_detail_IDatabaseService_new(0);
+    return 0;
+}
+SvcObj* new_mii(void) { return nn_mii_detail_IStaticService_new(0); }
+
+static const u8 mii_defaults[6][0x32] = {
+    {0, 4, 0, 64, 64, 0, 0, 0, 4, 0, 0, 68, 8, 0, 2, 8, 4, 3, 4, 2, 12, 6, 8, 4, 3, 6, 2, 10, 1, 4, 9, 23, 19, 4, 3, 13, 8, 0, 0, 4, 10, 0, 8, 4, 10, 0, 4, 2, 20, 0},
+    {0, 5, 0, 64, 64, 0, 0, 0, 0, 0, 0, 55, 6, 0, 2, 12, 4, 3, 4, 2, 12, 6, 6, 4, 3, 6, 2, 10, 1, 4, 9, 23, 19, 4, 3, 13, 8, 0, 0, 4, 10, 0, 8, 4, 10, 0, 4, 2, 20, 0},
+    {0, 0, 0, 64, 64, 0, 0, 0, 1, 0, 0, 33, 1, 0, 2, 8, 4, 3, 4, 2, 12, 6, 1, 4, 3, 6, 2, 10, 1, 4, 9, 23, 19, 4, 3, 13, 8, 0, 0, 4, 10, 0, 8, 4, 10, 0, 4, 2, 20, 0},
+    {0, 2, 1, 64, 64, 0, 0, 0, 2, 0, 0, 24, 8, 0, 4, 8, 4, 3, 3, 2, 12, 0, 8, 4, 3, 6, 2, 10, 1, 4, 9, 23, 19, 4, 3, 13, 8, 0, 0, 4, 10, 0, 8, 4, 10, 0, 4, 2, 20, 0},
+    {0, 6, 1, 64, 64, 0, 0, 0, 0, 0, 0, 14, 7, 0, 4, 13, 4, 3, 3, 2, 12, 0, 7, 4, 3, 6, 2, 10, 1, 4, 9, 23, 19, 4, 3, 13, 8, 0, 0, 4, 10, 0, 8, 4, 10, 0, 4, 2, 20, 0},
+    {0, 7, 1, 64, 64, 0, 0, 0, 0, 0, 0, 12, 1, 0, 4, 8, 4, 3, 3, 2, 12, 0, 1, 4, 3, 6, 2, 10, 1, 4, 9, 23, 19, 4, 3, 13, 8, 0, 0, 4, 10, 0, 8, 4, 10, 0, 4, 2, 20, 0},
+};
+static int nn_mii_detail_IDatabaseService_BuildDefault(SvcObj* self, u32 index, nn_mii_CharInfo* info) {
+    (void)self;
+    if (index >= 6) return RC(126, 1);  
+    memset(info, 0, sizeof *info);
+
+    info->v[0] = (u8)(index + 1);
+    info->v[6] = 0x40;
+    info->v[8] = 0x80;
+    static const char name[] = "no name";
+    for (u32 i = 0; i < sizeof name - 1; i++) info->v[0x10 + i * 2] = (u8)name[i];
+    memcpy(info->v + 0x26, mii_defaults[index], sizeof mii_defaults[index]);
+    return 0;
+}
+static int nn_mii_detail_IDatabaseService_SetInterfaceVersion(SvcObj* self, u32 version) {
+    (void)self;
+    (void)version;
+    return 0;
+}
+
+static int nn_ldn_detail_IUserLocalCommunicationService_GetState(SvcObj* self, u32* state) {
+    *state = __atomic_load_n(&self->u[0], __ATOMIC_RELAXED) ? 1 : 0;  
+    return 0;
+}
+static int nn_ldn_detail_IUserLocalCommunicationService_AttachStateChangeEvent(SvcObj* self, u32* event) {
+    return new_event(event, "ldn state", 0);
+}
+static int nn_ldn_detail_IUserLocalCommunicationService_Initialize(SvcObj* self, u64 pid) {
+    __atomic_store_n(&self->u[0], 1, __ATOMIC_RELAXED);
+    return 0;
+}
+static int nn_ldn_detail_IUserLocalCommunicationService_InitializeWithVersion(SvcObj* self, i32 version, u64 pid) {
+    __atomic_store_n(&self->u[0], 1, __ATOMIC_RELAXED);
+    return 0;
+}
+static int nn_ldn_detail_IUserLocalCommunicationService_Finalize(SvcObj* self) {
+    __atomic_store_n(&self->u[0], 0, __ATOMIC_RELAXED);
+    return 0;
+}
+static int nn_ldn_detail_IUserServiceCreator_CreateUserLocalCommunicationService(SvcObj* self, SvcObj** service) {
+    *service = nn_ldn_detail_IUserLocalCommunicationService_new(0);
+    return 0;
+}
+SvcObj* new_ldn(void) { return nn_ldn_detail_IUserServiceCreator_new(0); }
+static int nn_err_context_IWriterForApplication_CreateContextRegistrar(SvcObj* self, SvcObj** registrar) {
+    *registrar = nn_err_context_IContextRegistrar_new(0);
+    return 0;
+}
+SvcObj* new_ectx(void) { return nn_err_context_IWriterForApplication_new(0); }
+static int nn_spl_detail_IGeneralInterface_GenerateRandomBytes(SvcObj* self, IpcBuf data) { return random_fill(data); }
+SvcObj* new_spl(void) { return nn_spl_detail_IGeneralInterface_new(0); }
+
+
+static int ble_event(u8* success, u32* event, const char* name) {
+    *success = 1;
+    return new_event(event, name, 0);
+}
+static int nn_btm_IBtmUserCore_AcquireBleScanEvent(SvcObj* self, u8* success, u32* event) {
+    return ble_event(success, event, "btm BLE scan");
+}
+static int nn_btm_IBtmUserCore_AcquireBleConnectionEvent(SvcObj* self, u8* success, u32* event) {
+    return ble_event(success, event, "btm BLE connection");
+}
+static int nn_btm_IBtmUserCore_AcquireBlePairingEvent(SvcObj* self, u8* success, u32* event) {
+    return ble_event(success, event, "btm BLE pairing");
+}
+static int nn_btm_IBtmUserCore_AcquireBleServiceDiscoveryEvent(SvcObj* self, u8* success, u32* event) {
+    return ble_event(success, event, "btm BLE service discovery");
+}
+static int nn_btm_IBtmUserCore_AcquireBleMtuConfigEvent(SvcObj* self, u8* success, u32* event) {
+    return ble_event(success, event, "btm BLE MTU");
+}
+static int nn_btm_IBtmUser_GetCore(SvcObj* self, SvcObj** core) {
+    *core = nn_btm_IBtmUserCore_new(0);
+    return 0;
+}
+SvcObj* new_btmu(void) { return nn_btm_IBtmUser_new(0); }
+
+static int nn_audio_detail_IAudioInManager_OpenAudioIn(SvcObj* self, const nn_audio_AudioInParameter* params, u64 aruid,
+                                                       u32 process, IpcBuf name, IpcBuf name_out, u32* sample_rate,
+                                                       u32* channel_count, u32* sample_format, u32* state,
+                                                       SvcObj** in) {
+    return RC(153, 1);
+}
+static int nn_audio_detail_IAudioInManager_OpenAudioInAuto(SvcObj* self, const nn_audio_AudioInParameter* params,
+                                                           u64 aruid, u32 process, IpcBuf name, IpcBuf name_out,
+                                                           u32* sample_rate, u32* channel_count, u32* sample_format,
+                                                           u32* state, SvcObj** in) {
+    return RC(153, 1);
+}
+static int nn_audio_detail_IAudioInManager_OpenAudioInProtocolSpecified(
+    SvcObj* self, const nn_audio_AudioInProtocol* protocol, const nn_audio_AudioInParameter* params, u64 aruid,
+    u32 process, IpcBuf name, IpcBuf name_out, u32* sample_rate, u32* channel_count, u32* sample_format, u32* state,
+    SvcObj** in) {
+    return RC(153, 1);
+}
+SvcObj* new_audin(void) { return nn_audio_detail_IAudioInManager_new(0); }
