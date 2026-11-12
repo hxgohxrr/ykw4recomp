@@ -67,7 +67,7 @@ enum { GUI_PLACE_DATA, GUI_PLACE_GAMES, GUI_PLACE_WORK, GUI_PLACES };
 #define GUI_GROUPS_MAX   32
 #define GUI_FOLDERS_MAX  16     
 #define GUI_FOLDER_DEPTH 4      
-#define GUI_FOLDER_DEEP  " 
+#define GUI_FOLDER_DEEP  "/**" /* recursive folder marker */
 #define GUI_VIEW_ROWS    24     
 #define SNX_GUI_PLAYERS  8      
 

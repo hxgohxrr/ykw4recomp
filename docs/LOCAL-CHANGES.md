@@ -97,3 +97,7 @@ resource tracking and synchronization are unchanged. CI packages an ad-hoc-signe
 arm64 .app with checksum-pinned MoltenVK and preserves bundle metadata in a ZIP.
 Apple guest-memory and Mach-O module limitations in APPLE.md still apply.
 No in-game FPS improvement or macOS gameplay validation is claimed.
+
+macOS build repair (2026-11-12): restore the GUI recursive-folder suffix
+"/**", whose string literal had been truncated in the public source. This
+fixes the GUI_FOLDER_DEEP compilation errors in the Apple runtime target.
