@@ -7,6 +7,7 @@ LauncherMods* launcher_mods_load(HWND window, const wchar_t* base, const wchar_t
 int launcher_mods_command(HWND window, LauncherMods* mods, int id);
 int launcher_mods_write_ini(HWND window, LauncherMods* mods, const wchar_t* ini);
 int launcher_mods_publish(LauncherMods* mods);
+void launcher_mods_snapshot(HWND window, LauncherMods* mods, wchar_t snapshot[8192]);
 void launcher_mods_free(LauncherMods* mods);
 int launcher_mods_import_zip(HWND window, LauncherMods* mods, const wchar_t* archive, const wchar_t* name, int translation, const wchar_t* source);
 void launcher_mods_retranslate(HWND window, LauncherMods* mods);

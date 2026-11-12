@@ -7,6 +7,7 @@
 #include "nx/gpu/renderer.h"
 #include "nx/runtime/loader.h"
 #include "nx/runtime/arm.h"
+#include "nx/runtime/main.h"
 
 KThread* g_threads[256];
 int g_nthreads;
@@ -270,8 +271,7 @@ void kernel_run_main(u64 entry, u64 stack_size, int prio, int core) {
 
 
 void process_exit(int code) {
-    save_hints();
-    if (g_renderer && g_renderer->save) g_renderer->save();
+    snx_save_before_exit();
     LOG("The game exited (code %d)\n", code);
     plat_exit_now(code);
 }

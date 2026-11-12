@@ -684,6 +684,7 @@
 %_ptr_StorageBuffer_v4uint = OpTypePointer StorageBuffer %v4uint
     %uint_32 = OpConstant %uint 32
 %gl_WorkGroupSize = OpConstantComposite %v3uint %uint_32 %uint_1 %uint_1
+ %hash52_multiplier = OpConstant %uint 4007528593
        %main = OpFunction %void None %3
           %5 = OpLabel
          %bx = OpVariable %_ptr_Function_uint Function
@@ -3505,21 +3506,8 @@
        %2169 = OpLoad %uint %p
        %2170 = OpBitwiseXor %uint %2169 %2168
                OpStore %p %2170
-       %2171 = OpLoad %uint %p
-       %2173 = OpShiftLeftLogical %uint %2171 %int_17
-       %2174 = OpLoad %uint %p
-       %2175 = OpISub %uint %2174 %2173
-               OpStore %p %2175
-       %2176 = OpLoad %uint %p
-       %2177 = OpShiftLeftLogical %uint %2176 %int_7
-       %2178 = OpLoad %uint %p
-       %2179 = OpIAdd %uint %2178 %2177
-               OpStore %p %2179
-       %2180 = OpLoad %uint %p
-       %2181 = OpShiftLeftLogical %uint %2180 %int_4
-       %2182 = OpLoad %uint %p
-       %2183 = OpIAdd %uint %2182 %2181
-               OpStore %p %2183
+ %hash52_folded = OpIMul %uint %2170 %hash52_multiplier
+               OpStore %p %hash52_folded
        %2184 = OpLoad %uint %p
        %2185 = OpShiftRightLogical %uint %2184 %int_5
        %2186 = OpLoad %uint %p

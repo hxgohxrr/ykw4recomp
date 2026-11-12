@@ -171,6 +171,7 @@ class Launcher:
         root.protocol('WM_DELETE_WINDOW', self.close)
         self.refresh()
         root.after(80, self.pump)
+        self.saved_settings = self.settings_snapshot()
 
     def select_page(self, event=None):
         selected = self.notebook.select()
@@ -413,6 +414,11 @@ class Launcher:
         self.state_badge.configure(text=self.tr('En curso' if self.busy else 'Listo para jugar' if self.ready() else 'Sin preparar'))
         self.status.set(self.tr('Instalación: {path} · {state}').format(path=self.base, state=self.tr('Lista para iniciar.' if self.ready() else 'Prepara el juego para empezar.')))
 
+    def settings_snapshot(self):
+        return ({name: variable.get() for name, variable in self.values.items()},
+                {name: variable.get() for name, variable in self.rpc.items()},
+                self.lang.get(), tuple((mod.identifier, mod.enabled) for mod in self.mods))
+
     def save(self):
         if self.busy:
             return False
@@ -428,6 +434,7 @@ class Launcher:
                 raise ValueError('Importa y activa una traducción antes de seleccionar español.')
             save_mods(self.base, self.mods, sections=sections)
             update_ini(self.base / 'YKW4.discord.ini', {'Discord': rpc})
+            self.saved_settings = self.settings_snapshot()
             self.status.set(self.tr('Ajustes guardados. Se aplicarán al iniciar el juego.'))
             return True
         except (OSError, ValueError) as error:
@@ -435,12 +442,19 @@ class Launcher:
             return False
 
     def play(self):
-        if not self.ready() or not self.save():
+        if self.busy or not self.ready():
             return
+        if self.settings_snapshot() != self.saved_settings:
+            choice = messagebox.askyesnocancel(self.tr('Cambios sin aplicar'), self.tr('Hay cambios sin aplicar. ¿Quieres aplicarlos antes de jugar?\n\nSí: aplicar los cambios y jugar.\nNo: jugar con los ajustes guardados.\nCancelar: volver al launcher.'), parent=self.root, default='cancel')
+            if choice is None or (choice and not self.save()):
+                return
         env = dict(os.environ)
-        env['YKW4_LANGUAGE'] = 'es' if self.values['translation'].get() == 'es' and not any(mod.translation and mod.enabled for mod in self.mods) else 'original'
+        saved = read_ini(self.base / 'YKW4.ini')
+        translation = saved.get('Launcher', 'translation', fallback='original')
+        mods = scan_mods(self.base)
+        env['YKW4_LANGUAGE'] = 'es' if translation == 'es' and not any(mod.translation and mod.enabled for mod in mods) else 'original'
         settings = read_ini(self.base / 'YKW4.discord.ini')
-        rpc = dict(settings['Discord'])
+        rpc = dict(settings['Discord']) if settings.has_section('Discord') else {}
         def run_game():
             information = graphics_info()
             if information['status'] == 'software':
@@ -536,6 +550,7 @@ class Launcher:
                         remember_installation(self.base)
                     except OSError as error:
                         messagebox.showwarning(self.tr('YKW4Recomp'), self.tr('Instalación preparada, pero no se pudo recordar su carpeta: {error}').format(error=error), parent=self.root)
+                self.saved_settings = self.settings_snapshot()
             elif kind == 'callback':
                 value()
             elif kind == 'done':

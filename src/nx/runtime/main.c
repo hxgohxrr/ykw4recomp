@@ -5,6 +5,7 @@
    This fork's changes are under GPL-3.0-or-later, the license of the fork as a whole (LICENSE). */
 #define _GNU_SOURCE
 
+#include "nx/runtime/frame_profile.h"
 #include "nx/runtime/main.h"
 #include "nx/runtime/discord_presence.h"
 #include "nx/runtime/arm.h"
@@ -234,6 +235,18 @@ static int is_dump(const char* path) {
     return 0;
 }
 
+static void report_frame_profile(int force) {
+    static PMutex lock = PMUTEX_INIT;
+    if (!frame_profile_enabled()) return;
+    pm_lock(&lock);
+    char text[4096];
+    if (frame_profile_poll(plat_ns(), (u64)__atomic_load_n(&g_frames, __ATOMIC_RELAXED),
+                           __atomic_load_n(&g_opt_fps, __ATOMIC_RELAXED),
+                           __atomic_load_n(&g_opt_vsync, __ATOMIC_RELAXED), g_opt_gpu_sync_trace,
+                           force, text, sizeof text)) LOG("%s", text);
+    pm_unlock(&lock);
+}
+
 void snx_save_before_exit(void) {
     static PMutex lock = PMUTEX_INIT;
     static int done;
@@ -243,6 +256,7 @@ void snx_save_before_exit(void) {
         save_hints();
 
         if (g_renderer && g_renderer->save) g_renderer->save();
+        report_frame_profile(1);
     }
     pm_unlock(&lock);
 }
@@ -309,6 +323,19 @@ int snx_main(int argc, char** argv) {
     hints_init();
     plat_install_crash_handler();
     clock_start();
+    LOG("runtime: ini=%s fps_limit=%d vsync=%d resolution=%.2f gpu_sync_trace=%d validation_env=%d\n",
+        ini, g_opt_fps, g_opt_vsync, (double)g_opt_resf, g_opt_gpu_sync_trace, getenv("SNX_VK_VALIDATION") != NULL);
+    const char* profile_env = getenv("SNX_FRAME_PROFILE");
+    int profiling = g_opt_frame_profile || (profile_env && !strcmp(profile_env, "1"));
+    char profile_path[1400];
+    snprintf(profile_path, sizeof profile_path, "%sframe-profile.csv", g_statedir);
+    int profile_file = frame_profile_init(profiling, profile_path, plat_ns(),
+                                           (u64)__atomic_load_n(&g_frames, __ATOMIC_RELAXED));
+    if (profiling) {
+        LOG("perf: enabled; csv=%s file_open=%d; nested CPU spans overlap; GPU spans are not utilization\n", profile_path, profile_file);
+        if (g_opt_gpu_sync_trace || getenv("SNX_VK_VALIDATION"))
+            WARN("perf: diagnostic GPU synchronization or validation is active; do not compare this run with normal scheduling\n");
+    }
 
     LOG("YKW4Recomp - %s\n", g_mod->title ? g_mod->title : g_exename);
     g_title_id = g_mod->title_id;
@@ -342,14 +369,19 @@ int snx_main(int argc, char** argv) {
     kernel_run_main(g_mod->mods[0].base + g_mod->mods[0].text_off, g_mod->main_stack ? g_mod->main_stack : 0x100000,
                     (int)g_mod->main_prio, (int)g_mod->main_core);
 
-    u64 next = plat_ns();
+    u64 next = plat_ns(), previous_tick = 0;
     int tick = 0;
     while (!g_quit) {
+        u64 tick_now = frame_profile_begin();
+        if (previous_tick && tick_now >= previous_tick)
+            frame_profile_add(FP_HOST_TICK, tick_now - previous_tick, 1);
+        previous_tick = tick_now;
         video_poll();
         hid_update();
         vi_vsync_tick();
         if (tick % 60 == 0) ini_poll(0);
         frontend_frame();
+        report_frame_profile(0);
         if (++tick % 300 == 0) {
             save_hints();
 

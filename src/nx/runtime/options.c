@@ -28,6 +28,7 @@
 
 int g_opt_diag = 0;
 int g_opt_gpu_sync_trace = 0;
+int g_opt_frame_profile = 0;
 int g_opt_auto_stub_ipc = 1;
 int g_opt_docked = 1, g_opt_lang = 1, g_opt_fps = SNX_FPS_GAME, g_opt_fullscreen = 0;
 float g_opt_resf = 1.0f;
@@ -185,6 +186,8 @@ static const IniOpt INI_DBG[] = {
     {"gpu_sync_trace", "0",
      "1 = log and wait for every draw/dispatch (very slow), 2 = wait at frame completion, 3 = trace and wait for dispatches only, 4 = conservative GPU draw barriers, 5 = route guest compute to graphics queue (experimental)",
      INI_INT, INI_STARTUP, &g_opt_gpu_sync_trace, 0, 5, NULL, NULL, NULL, 0, 0},
+    {"frame_profile", "0", "1 = aggregate CPU waits, pipeline creation, pacing and non-blocking graphics GPU timestamps every 5 seconds",
+     INI_INT, INI_STARTUP, &g_opt_frame_profile, 0, 1, NULL, NULL, NULL, 0, 0},
     {"profile", "0", "1 = write profile.txt every 10 seconds (CPU profiler, Windows only)", INI_INT, INI_STARTUP,
      &g_opt_prof, 0, 1, NULL, NULL, NULL, 0, 0},
     {NULL, NULL, NULL, 0, 0, NULL, 0, 0, NULL, NULL, NULL, 0, 0}};

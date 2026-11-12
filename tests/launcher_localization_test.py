@@ -46,7 +46,7 @@ class LocalizationTests(unittest.TestCase):
 
     def test_windows_visible_spanish_literals_have_mappings(self):
         runtime = ROOT / 'src/nx/runtime'
-        for name in ('launcher_win32.rc', 'translation_win32.c', 'launcher_setup.c', 'launcher_mods.c', 'launcher_catalog.c', 'launcher_security.c', 'launcher_update.c'):
+        for name in ('launcher_win32.rc', 'translation_win32.c', 'launcher_pending.c', 'launcher_setup.c', 'launcher_mods.c', 'launcher_catalog.c', 'launcher_security.c', 'launcher_update.c'):
             source = (runtime / name).read_text(encoding='utf-8')
             for match in re.finditer(r'(?<!\w)(?:L)?"((?:[^"\\]|\\.)*)"', source):
                 text = match[1].replace(r'\r', '\r').replace(r'\n', '\n').replace(r'\"', '"').replace('\\\\', '\\')

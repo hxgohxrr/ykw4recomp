@@ -28,6 +28,7 @@ extern int g_opt_fps;
 void fps_limit_text(int fps, char* out, size_t n);  
 extern int g_opt_diag, g_opt_shadows, g_opt_prof;
 extern int g_opt_gpu_sync_trace;
+extern int g_opt_frame_profile;
 
 extern int g_opt_auto_stub_ipc;
 extern int g_opt_network;  

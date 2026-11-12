@@ -2,6 +2,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
    Copyright 2026 the ScarletNX contributors */
 
+#include "nx/runtime/frame_profile.h"
 #include <stdlib.h>
 #include "nx/runtime/platform/log.h"
 #include "nx/gpu/vk/vk.h"
@@ -38,8 +39,12 @@ typedef struct {
 
     VkDescriptorPool pool_d[64];
     int npool, ipool;  
+    VkQueryPool timestamps;
+    int timestamps_valid;
 } Frame;
 
+enum { PROFILE_QUERY_COUNT = 256 };
+static unsigned g_timestamp_bits;
 static Frame g_fr[VK_FRAMES];
 static u32 g_cur;
 static u32 g_cb_begun = 1;  
@@ -114,6 +119,52 @@ static void dead_free(Frame* f) {
     f->ndead = 0;
 }
 
+static void profile_queries_init(void) {
+    if (!frame_profile_enabled()) return;
+    u32 count = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(g_vk.phys, &count, NULL);
+    VkQueueFamilyProperties* families = calloc(count, sizeof *families);
+    if (families) {
+        vkGetPhysicalDeviceQueueFamilyProperties(g_vk.phys, &count, families);
+        if (g_vk.gfx_family < count) g_timestamp_bits = families[g_vk.gfx_family].timestampValidBits;
+        free(families);
+    }
+    LOG("perf: graphics timestamp bits=%u period=%.6f ns; results read only on existing frame recycling\n",
+        g_timestamp_bits, (double)g_vk.props.limits.timestampPeriod);
+    if (!g_timestamp_bits) { frame_profile_add(FP_QUERY_DROPPED, 0, 1); return; }
+    VkQueryPoolCreateInfo info = {.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
+                                 .queryType = VK_QUERY_TYPE_TIMESTAMP, .queryCount = PROFILE_QUERY_COUNT};
+    for (unsigned index = 0; index < VK_FRAMES; index++) {
+        Frame* frame = &g_fr[index];
+        if (vkCreateQueryPool(g_vk.dev, &info, NULL, &frame->timestamps) != VK_SUCCESS) {
+            frame->timestamps = VK_NULL_HANDLE;
+            frame_profile_add(FP_QUERY_DROPPED, 0, 1);
+        }
+        frame->timestamps_valid = 1;
+    }
+}
+
+static void profile_queries_collect(Frame* frame) {
+    if (!frame->timestamps || !frame->timestamps_valid || !frame->icb) return;
+    u32 count = frame->icb * 2;
+    if (count > PROFILE_QUERY_COUNT) count = PROFILE_QUERY_COUNT;
+    u64 values[PROFILE_QUERY_COUNT][2] = {{0}};
+    VkResult result = vkGetQueryPoolResults(g_vk.dev, frame->timestamps, 0, count,
+        count * sizeof values[0], values, sizeof values[0], VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+    if (result != VK_SUCCESS && result != VK_NOT_READY) {
+        frame_profile_add(FP_QUERY_DROPPED, 0, count / 2);
+        return;
+    }
+    for (u32 index = 0; index < count; index += 2) {
+        uint64_t ns;
+        if (values[index][1] && values[index + 1][1] &&
+            frame_profile_timestamp(values[index][0], values[index + 1][0], g_timestamp_bits,
+                                    g_vk.props.limits.timestampPeriod, &ns))
+            frame_profile_add(FP_GPU_GRAPHICS, ns, 1);
+        else frame_profile_add(FP_QUERY_DROPPED, 0, 1);
+    }
+}
+
 void vk_cmd_init(void) {
 
     g_frame_id++;
@@ -130,6 +181,7 @@ void vk_cmd_init(void) {
         VK_OK(vkCreateCommandPool(g_vk.dev, &pci, NULL, &g_fr[i].pool));
         g_fr[i].fresh = 1;
     }
+    profile_queries_init();
 }
 
 #define STAGE_MIN (16ull << 20)
@@ -158,7 +210,9 @@ static void ring_flush(Ring* r) {
 static void timeline_wait(u64 value) {
     VkSemaphoreWaitInfo wi = {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO, .semaphoreCount = 1, .pSemaphores = &g_gsem, .pValues = &value};
+    u64 timing = frame_profile_begin();
     VK_OK(vkWaitSemaphores(g_vk.dev, &wi, UINT64_MAX));
+    frame_profile_end(FP_WAIT_GRAPHICS, timing);
 }
 
 static void land_through(u64 value) {
@@ -170,6 +224,7 @@ static void frame_recycle(Frame* f) {
     if (f->last) {
         timeline_wait(f->last);
         land_through(f->last);
+        profile_queries_collect(f);
         f->last = 0;
     }
     dead_free(f);
@@ -180,6 +235,7 @@ static void frame_recycle(Frame* f) {
     ring_reset(&f->stage);
     ring_reset(&f->back);
     f->icb = 0;
+    f->timestamps_valid = 1;
     f->fresh = 0;
 }
 
@@ -201,6 +257,10 @@ VkCommandBuffer vk_cmd(void) {
         VkCommandBufferBeginInfo bi = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
                                        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
         VK_OK(vkBeginCommandBuffer(f->cbs[f->icb], &bi));
+        if (f->timestamps && f->icb < PROFILE_QUERY_COUNT / 2) {
+            vkCmdResetQueryPool(f->cbs[f->icb], f->timestamps, f->icb * 2, 2);
+            vkCmdWriteTimestamp2(f->cbs[f->icb], VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, f->timestamps, f->icb * 2);
+        } else if (f->timestamps) frame_profile_add(FP_QUERY_DROPPED, 0, 1);
         f->recording = 1;
         g_cb_begun++;
     }
@@ -244,6 +304,7 @@ static u8* ring_alloc(Frame* f, Ring* r, u64 size, u64 align, VkBufferUsageFlags
         at = 0;
     }
     r->used = at + size;
+    if (r == &f->stage) frame_profile_add(FP_UPLOAD_BYTES, 0, size);
     *buf = r->buf;
     *off = at;
     if (mem) *mem = r->mem;
@@ -277,6 +338,8 @@ void vk_submit(VkSemaphore wait, VkPipelineStageFlags2 wait_stage, VkSemaphore s
     vk_buf_host_barrier(cb, g_gval + 1);
 
     ring_flush(&f->stage);
+    if (f->timestamps && f->icb < PROFILE_QUERY_COUNT / 2)
+        vkCmdWriteTimestamp2(cb, VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, f->timestamps, f->icb * 2 + 1);
     VK_OK(vkEndCommandBuffer(cb));
     VkSemaphoreSubmitInfo w[2] = {
         {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO, .semaphore = wait, .stageMask = wait_stage}};
@@ -303,7 +366,9 @@ void vk_submit(VkSemaphore wait, VkPipelineStageFlags2 wait_stage, VkSemaphore s
                         .pCommandBufferInfos = &c,
                         .signalSemaphoreInfoCount = signal ? 2u : 1u,
                         .pSignalSemaphoreInfos = s};
+    u64 timing = frame_profile_begin();
     VkResult r = vkQueueSubmit2(g_vk.gfx, 1, &si, VK_NULL_HANDLE);
+    frame_profile_end(FP_SUBMIT_GRAPHICS, timing);
     if (r == VK_ERROR_DEVICE_LOST) {
         WARN("vulkan: device lost on graphics submit=%llu compute-waits=%u\n",
              (unsigned long long)(g_gval + 1), nw - (wait ? 1u : 0u));
@@ -313,6 +378,7 @@ void vk_submit(VkSemaphore wait, VkPipelineStageFlags2 wait_stage, VkSemaphore s
     VK_OK(r);
     g_gval++;
     if (r != VK_SUCCESS) {  
+        f->timestamps_valid = 0;
         VkSemaphoreSignalInfo ss = {
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO, .semaphore = g_gsem, .value = g_gval};
         VK_OK(vkSignalSemaphore(g_vk.dev, &ss));

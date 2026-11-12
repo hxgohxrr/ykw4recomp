@@ -67,6 +67,7 @@ int plat_thread(PThreadFn fn, void* arg, size_t stack) {
 }
 void plat_thread_exit(void) { pthread_exit(NULL); }
 void save_hints(void) {}
+void snx_save_before_exit(void) {}
 void snx_fpcr_apply(CPU* c) { (void)c; }
 void pm_init(PMutex* m) { pthread_mutex_init(&m->l, NULL); }
 void pm_lock(PMutex* m) { pthread_mutex_lock(&m->l); }

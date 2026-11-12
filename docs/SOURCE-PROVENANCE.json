@@ -59,7 +59,13 @@
     "tests/spirv_emitter_fixture.c",
     "tests/spirv_emitter_fixture.h",
     "tests/vulkan_backing.c",
-    "tests/vulkan_headless.c"
+    "tests/vulkan_headless.c",
+    "src/nx/gpu/shader/spirv_translate.c",
+    "tests/shader_direct_regressions.c",
+    "tests/shader_direct_test.py",
+    "src/nx/gpu/texture/astc.spvasm",
+    "src/nx/gpu/texture/astc_spv.h",
+    "tests/astc_vulkan.c"
   ],
   "omitted": [
     "development history and state",
@@ -84,5 +90,27 @@
     "backend": "hactool at pinned upstream revision, with the corresponding ScarletNX patches",
     "embedded_console_keys": false,
     "embedded_game_content": false
+  },
+  "upstream_review": {
+    "date": "2026-11-09",
+    "head": "a72181a5d0963b647dfbf61c0a2c8546227d4d7b",
+    "selective_backports": [
+      {
+        "commit": "ec9c208c66d5159cd44cb34d06506b2025865b4a",
+        "scope": "Defer fragment discard until after the Maxwell control-flow loop; preserve derivative helper execution and suppress discarded-lane side effects."
+      },
+      {
+        "commit": "68b6cc9be561eb5edc988521388c38a24b562e7e",
+        "scope": "Adapt the ASTC partition hash multiply to the existing SPIR-V assembly and regenerate its embedded shader; CPU reference decoder unchanged."
+      }
+    ],
+    "module_abi_changed": false,
+    "radeon_hardware_validation": "User reports the previous candidate loads on Radeon; no independent full-gameplay or FPS validation."
+  },
+  "frame_profiling": {
+    "date": "2026-11-11",
+    "scope": "Opt-in aggregated host timings and asynchronous graphics timestamp spans; no new completion waits or scheduling changes.",
+    "default_enabled": false,
+    "fps_gain_claimed": false
   }
 }

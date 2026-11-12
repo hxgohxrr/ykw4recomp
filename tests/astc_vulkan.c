@@ -3,6 +3,7 @@
 
 #include <stdarg.h>
 #include <stdlib.h>
+#include <time.h>
 #include "nx/gpu/vk/vk.h"
 #include "nx/gpu/texture/astc.h"
 #include "nx/runtime/platform/log.h"
@@ -32,6 +33,13 @@ int vk_ok_(VkResult r, const char* what, const char* file, int line) {
     return 1;
 }
 void vk_render_end(void) {}
+void vk_render_forget_state(void) {}
+void vk_report_device_fault(void) { fatal("ASTC Vulkan test lost its device\n"); }
+u64 plat_ns(void) {
+    struct timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now)) fatal("monotonic clock unavailable\n");
+    return (u64)now.tv_sec * 1000000000ull + (u64)now.tv_nsec;
+}
 
 void vk_buf_frame_done(u64 frame) { (void)frame; }
 void vk_buf_host_barrier(VkCommandBuffer cb, u64 frame) {

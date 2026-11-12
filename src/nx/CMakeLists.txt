@@ -84,7 +84,8 @@ snx_component(shader gpu/shader/shader.c gpu/shader/decode.c gpu/shader/corpus.c
 snx_component(vk gpu/vk/renderer.c gpu/vk/device.c gpu/vk/device_fault.c gpu/vk/cmd.c gpu/vk/format.c gpu/vk/surface.c gpu/vk/texture.c
                  gpu/vk/buffer.c gpu/vk/writeback.c gpu/vk/pipeline.c gpu/vk/render.c gpu/vk/release.c gpu/vk/compute.c gpu/vk/occlusion.c
                  gpu/vk/pending_pages.c gpu/vk/astc.c gpu/vk/ui.c gpu/texture/etc2.c gpu/texture/depth.c gpu/vk/vic.c gpu/vk/vma.cpp "${volk_SOURCE_DIR}/volk.c")
-set(components core kernel hle video gpu platform shader vk)
+snx_component(frame_profile runtime/frame_profile.c)
+set(components core kernel hle video gpu platform shader vk frame_profile)
 
 set_source_files_properties("${volk_SOURCE_DIR}/volk.c" gpu/vk/vma.cpp PROPERTIES COMPILE_OPTIONS -w)
 
@@ -161,7 +162,7 @@ if(WIN32)
       target_link_libraries(ykw4_launcher_support PUBLIC ykw4_discord_json)
       target_compile_definitions(ykw4_launcher_support PRIVATE MINIZ_NO_ZLIB_COMPATIBLE_NAMES)
       target_link_libraries(YKW4Recomp PRIVATE ykw4_launcher_support msimg32)
-      target_sources(YKW4Recomp PRIVATE runtime/translation_win32.c runtime/launcher_security.c runtime/launcher_launch.c runtime/launcher_icon.c runtime/launcher_mods.c runtime/launcher_zip.c runtime/launcher_lang.c runtime/launcher_catalog.c runtime/launcher_setup.c runtime/launcher_update.c runtime/launcher_prepare.c runtime/launcher_win32.rc)
+      target_sources(YKW4Recomp PRIVATE runtime/translation_win32.c runtime/launcher_pending.c runtime/launcher_security.c runtime/launcher_launch.c runtime/launcher_icon.c runtime/launcher_mods.c runtime/launcher_zip.c runtime/launcher_lang.c runtime/launcher_catalog.c runtime/launcher_setup.c runtime/launcher_update.c runtime/launcher_prepare.c runtime/launcher_win32.rc)
       set(language_resource "${CMAKE_BINARY_DIR}/generated/launcher_languages.rc")
       file(GENERATE OUTPUT "${language_resource}" CONTENT
           "400 RCDATA \"${CMAKE_CURRENT_SOURCE_DIR}/runtime/langs/es.json\"\n401 RCDATA \"${CMAKE_CURRENT_SOURCE_DIR}/runtime/langs/en.json\"\n402 RCDATA \"${CMAKE_CURRENT_SOURCE_DIR}/runtime/langs/ja.json\"\n403 RCDATA \"${CMAKE_CURRENT_SOURCE_DIR}/runtime/langs/de.json\"\n")
@@ -312,7 +313,11 @@ if(BUILD_TESTING AND SNX_TEST_VULKAN)
     endif()
     target_link_libraries(snx-test-vulkan PRIVATE SDL3::SDL3)
     add_test(NAME vulkan_headless COMMAND snx-test-vulkan -H)
-    set_tests_properties(vulkan_headless PROPERTIES TIMEOUT 60
+    add_test(NAME vulkan_pipeline_no_memo COMMAND snx-test-vulkan -H)
+    set_tests_properties(vulkan_pipeline_no_memo PROPERTIES ENVIRONMENT "SNX_VK_PIPELINE_MEMO=0")
+    add_test(NAME vulkan_frame_profile COMMAND snx-test-vulkan -H)
+    set_tests_properties(vulkan_frame_profile PROPERTIES ENVIRONMENT "YKW4_TEST_FRAME_PROFILE=1")
+    set_tests_properties(vulkan_headless vulkan_pipeline_no_memo vulkan_frame_profile PROPERTIES TIMEOUT 60
         FAIL_REGULAR_EXPRESSION "vulkan validation ERROR;failed: VK_ERROR")
 endif()
 if(BUILD_TESTING)

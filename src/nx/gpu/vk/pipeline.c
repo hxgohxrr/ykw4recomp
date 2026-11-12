@@ -2,6 +2,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
    Copyright 2026 the ScarletNX contributors */
 
+#include "nx/runtime/frame_profile.h"
 #include "nx/gpu/vk/storage_limits.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -649,6 +650,7 @@ static VkPipeline pipe_create(const PipeKey* k) {
     u64 compile_start = plat_ns();
     VK_OK(vkCreateGraphicsPipelines(g_vk.dev, g_pcache, 1, &gi, NULL, &p));
     u64 compile_ns = plat_ns() - compile_start;
+    frame_profile_add(FP_PIPELINE_GRAPHICS, compile_ns, 1);
     if (compile_ns >= 1000000000ull)
         WARN("vulkan: graphics pipeline compilation took %llu ms\n", (unsigned long long)(compile_ns / 1000000));
     return p;
@@ -659,7 +661,9 @@ VkPipeline vk_pipeline_get(const PipeKey* k) {
     static int memo = -1;
     if (memo < 0) {
         const char* value = getenv("SNX_VK_PIPELINE_MEMO");
-        memo = value && strcmp(value, "0") != 0;
+        // Pipelines and their complete keys are immutable for the device lifetime.
+        // Keep SNX_VK_PIPELINE_MEMO=0 for diagnostic comparisons.
+        memo = !value || strcmp(value, "0") != 0;
     }
     if (memo && g_last_pipe && !memcmp(k, &g_last_pipe_key, sizeof *k)) return g_last_pipe;
     u64 h = vk_hash(k, sizeof *k);

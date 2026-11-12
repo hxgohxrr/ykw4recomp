@@ -2,6 +2,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
    Copyright 2026 the ScarletNX contributors */
 
+#include "nx/runtime/frame_profile.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -106,9 +107,11 @@ static void vkr_clear(GpuChannel* ch, u32 v) {
 }
 static void vkr_draw(GpuChannel* ch, int indexed, u32 topology, u32 first, u32 count, u32 bv, u32 bi, u32 instances) {
     g_draws++;
+    u64 timing = frame_profile_begin();
     vk_lock();
     vk_render_draw(ch, indexed, topology, first, count, bv, bi, instances);
     vk_unlock();
+    frame_profile_end(FP_DRAW_CPU, timing);
 }
 static void vkr_method_barrier(int kind) {
     vk_lock();
@@ -163,10 +166,12 @@ static void vkr_dispatch(GpuChannel* ch, const u32* q, u64 code) {
     static int off = -1;
     if (off < 0) off = getenv("SNX_NO_COMPUTE") != NULL;
     if (off) return;
+    u64 timing = frame_profile_begin();
     r3d_pending_flush();  
     vk_lock();
     vk_dispatch(ch, q, code);
     vk_unlock();
+    frame_profile_end(FP_COMPUTE_CPU, timing);
 }
 
 static void vkr_before_syncwait(void) {
@@ -426,7 +431,9 @@ static void show(Surf* src, u32 fw, u32 fh, u32 transform, int game) {
                                .swapchainCount = 1,
                                .pSwapchains = &g_vk.swapchain,
                                .pImageIndices = &idx};
+        u64 timing = frame_profile_begin();
         VkResult r = vkQueuePresentKHR(g_vk.gfx, &pi);
+        frame_profile_end(FP_PRESENT_CPU, timing);
         if (r == VK_ERROR_OUT_OF_DATE_KHR || (r == VK_SUBOPTIMAL_KHR && !g_vk.sc_turned))
             recreate = 1;
         else if (r == VK_ERROR_SURFACE_LOST_KHR)

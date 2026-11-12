@@ -63,3 +63,37 @@ identity implementations are not linked into the production executable; their
 earlier source and isolated regression targets remain for provenance only.
 Earlier bound modules are not migrated automatically. The runtime smoke test can
 relocate a synthetic prepared installation before loading it (--relocate).
+
+Radeon fragment-flow fix (2026-11-09): selectively adapted upstream
+`ec9c208c66d5159cd44cb34d06506b2025865b4a`. Fragment discard is deferred until
+after the control-flow dispatch loop, discarded lanes suppress storage writes
+and atomics, and SR_THREAD_KILL reads the deferred flag. Added eight asset-free
+shader fixtures and structural checks; the old translator fails the seven flow
+cases, and the revised direct-shader suite passes SPIR-V validation. No module
+ABI, queue scheduling default or game files change. See `ykw4-performance.md`
+for the reviewed upstream revision and remaining hardware-validation limits.
+
+ASTC partition hash optimization (2026-11-09): adapted upstream
+`68b6cc9be561eb5edc988521388c38a24b562e7e` to the existing SPIR-V assembly.
+The equivalent unsigned multiply replaces three shift/add/subtract steps;
+the CPU reference decoder is unchanged and the embedded shader is regenerated.
+No texture quality or format changes are introduced.
+
+Frame profiling (2026-11-11): opt-in five-second CSV/log aggregates expose loaded
+FPS/VSync/synchronization settings, host draw preparation, pipeline creation,
+timeline waits, presentation calls, limiter sleeps, guest intervals and bounded
+graphics-queue timestamp spans. Queries are collected only after existing frame
+completion waits, without adding waits or changing normal scheduling. CPU spans
+are nested and GPU spans are not utilization. See FRAME-PROFILING.md for the
+tester procedure, metric limits and the measurement gate for later optimizations.
+Normal guest process exit now uses the same idempotent save routine as frontend
+exit, so short runs also flush the final partial performance report.
+
+macOS optimized build (2026-11-12): the macos preset uses Release and checked
+C/C++ interprocedural optimization. Exact-key last-pipeline memoization is now
+on by default (SNX_VK_PIPELINE_MEMO=0 restores hash-table lookup). This avoids
+hashing the full pipeline key on consecutive identical draws; command recording,
+resource tracking and synchronization are unchanged. CI packages an ad-hoc-signed
+arm64 .app with checksum-pinned MoltenVK and preserves bundle metadata in a ZIP.
+Apple guest-memory and Mach-O module limitations in APPLE.md still apply.
+No in-game FPS improvement or macOS gameplay validation is claimed.

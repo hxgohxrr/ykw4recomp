@@ -303,6 +303,8 @@
     "Selecciona una imagen RomFS válida.": "Wähle ein gültiges RomFS-Abbild aus.",
     "No se pudo vincular el módulo. Comprueba la identidad, la clave privada y los permisos. La instalación anterior no se ha modificado.": "Das Modul konnte nicht gebunden werden. Prüfe die Identität, den privaten Schlüssel und die Berechtigungen. Die vorherige Installation wurde nicht verändert.",
     "No se pudo cargar el módulo ELF o sus dependencias.": "Das ELF-Modul oder seine Abhängigkeiten konnten nicht geladen werden.",
-    "Módulo dañado, dependencias ausentes o vinculado a otra instalación/usuario. Prepara de nuevo en otra carpeta. No se han cambiado las partidas.": "Das Modul ist beschädigt, es fehlen Abhängigkeiten oder es ist an eine andere Installation bzw. einen anderen Benutzer gebunden. Bereite es in einem anderen Ordner erneut vor. Spielstände wurden nicht verändert."
+    "Módulo dañado, dependencias ausentes o vinculado a otra instalación/usuario. Prepara de nuevo en otra carpeta. No se han cambiado las partidas.": "Das Modul ist beschädigt, es fehlen Abhängigkeiten oder es ist an eine andere Installation bzw. einen anderen Benutzer gebunden. Bereite es in einem anderen Ordner erneut vor. Spielstände wurden nicht verändert.",
+    "Cambios sin aplicar": "Nicht angewendete Änderungen",
+    "Hay cambios sin aplicar. ¿Quieres aplicarlos antes de jugar?\n\nSí: aplicar los cambios y jugar.\nNo: jugar con los ajustes guardados.\nCancelar: volver al launcher.": "Es gibt nicht angewendete Änderungen. Vor dem Spielen anwenden?\n\nJa: Änderungen anwenden und spielen.\nNein: mit den gespeicherten Einstellungen spielen.\nAbbrechen: zum Launcher zurückkehren."
   }
 }

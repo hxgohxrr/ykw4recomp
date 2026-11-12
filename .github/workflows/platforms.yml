@@ -102,6 +102,24 @@ jobs:
           cmake --preset ${{ matrix.platform }} -DLLVM_DIR="$PWD/target-llvm/lib/cmake/llvm" -DSNX_DEPLOY=OFF -DSNX_BUILD_3DS=OFF -DBUILD_TESTING=OFF 2>&1 | tee configure.txt
           cmake --build --preset ${{ matrix.platform }} --parallel 3 2>&1 | tee compile.txt
           cmake --install build/${{ matrix.platform }} --prefix stage
+      - name: Package macOS application with MoltenVK
+        if: matrix.platform == 'macos'
+        run: |
+          curl -fL -o moltenvk.tar https://github.com/V380-Ori/Ryujinx.MoltenVK/releases/download/v1.4.1-ryujinx/MoltenVK-macos.tar
+          echo "ea1c633808d0a61e86ee35af4bdc280f5f07f95633b95935f3e695dc5226e640  moltenvk.tar" | shasum -a 256 -c
+          mkdir moltenvk
+          tar -xf moltenvk.tar -C moltenvk
+          sh scripts/apple-app.sh macos stage app moltenvk
+          codesign --verify --deep --strict app/YKW4Recomp.app
+          file app/YKW4Recomp.app/Contents/MacOS/YKW4Recomp
+          ditto -c -k --sequesterRsrc --keepParent app/YKW4Recomp.app YKW4Recomp-macos-arm64.zip
+      - uses: actions/upload-artifact@v4
+        if: matrix.platform == 'macos' && success()
+        with:
+          name: YKW4Recomp-macos-arm64
+          path: YKW4Recomp-macos-arm64.zip
+          if-no-files-found: error
+          retention-days: 14
       - name: Package unsigned iOS IPA
         if: matrix.platform == 'ios'
         run: |

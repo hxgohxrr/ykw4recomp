@@ -39,8 +39,10 @@ macos)
     cp "$src/dist/apple/Info-macOS.plist" "$app/Contents/Info.plist"
     set=$work/YKW4Recomp.iconset
     mkdir "$set"
-    for size in 16 32 128 256; do
+    for size in 16 32 128 256 512; do
         sips -z $size $size "$src/dist/icons/hicolor/256x256/apps/wimsy.png" --out "$set/icon_${size}x${size}.png" >/dev/null
+        retina=$((size * 2))
+        sips -z $retina $retina "$src/dist/icons/hicolor/256x256/apps/wimsy.png" --out "$set/icon_${size}x${size}@2x.png" >/dev/null
     done
     iconutil -c icns "$set" -o "$app/Contents/Resources/YKW4Recomp.icns"
     if [ -n "$moltenvk" ]; then

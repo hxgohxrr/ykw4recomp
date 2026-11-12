@@ -33,7 +33,8 @@ static const char* beyond_paths[3];
 static const char* attribute_paths[6];
 static const char* pexit_path;
 static const char* passthrough_paths[6];
-static char* fixture_paths[64];
+static const char* flow_discard_paths[8];
+static char* fixture_paths[80];
 static size_t fixture_count;
 
 static const char* fixture_path(const char* directory, const char* name) {
@@ -1407,6 +1408,73 @@ static void eden_forms(void) {
     }
 }
 
+static int discard_after_flow(const u32* code, size_t words) {
+    u32 merge = 0;
+    size_t merge_at = 0;
+    int kills = 0;
+    for (size_t offset = 5; offset < words;) {
+        u32 width = code[offset] >> 16, opcode = code[offset] & 0xffff;
+        if (!width || offset + width > words) return 0;
+        if (opcode == 246 && !merge) merge = code[offset + 1];
+        if (opcode == 248 && merge && code[offset + 1] == merge) merge_at = offset;
+        if (opcode == 5380 || ((opcode == 252 || opcode == 253) && !merge_at)) return 0;
+        if (opcode == 252) kills++;
+        offset += width;
+    }
+    return merge_at && kills == 1;
+}
+
+static void fragment_flow_discard(void) {
+    const u64 kill = 0xe33000000007000full;
+    for (int variant = 0; variant < 8; variant++) {
+        u64 program[64] = {0};
+        ((u32*)program)[18] = 15;
+        program[10] = program[14] = SCHED;
+        program[11] = (0xe24000000007000full & ~(7ull << 16)) | (16ull << 20);
+        program[12] = kill;
+        program[13] = program[15] = EXIT;
+        if (variant == 0) {
+            program[11] = kill;
+            program[12] = EXIT;
+        } else if (variant == 2) {
+            program[12] = kill & ~(7ull << 16);
+        } else if (variant == 3) {
+            program[12] = mov32i(0, 0);
+        } else if (variant == 4) {
+            program[13] = (EXIT & ~(7ull << 16)) | (1ull << 16);
+        } else if (variant == 5 || variant == 6) {
+            program[11] = variant == 5 ? 0x4c98078804a70002ull : 0x4c98078804a70001ull;
+            program[12] = (0xe24000000007000full & ~(7ull << 16)) | (16ull << 20);
+            program[13] = kill;
+            program[15] = variant == 5 ? 0xeb20010600f70004ull : 0xeb50008602070a00ull;
+            program[16] = 0xf0c8000001370001ull;
+            program[17] = EXIT;
+        } else if (variant == 7) {
+            program[11] = 0xe23000000007000full | (16ull << 20);
+        }
+        ShaderInfo info = {0};
+        size_t words = 0;
+        u32* code = shader_to_spirv((const u8*)program, sizeof program, ST_FS, &info, &words, 0, 1, 1, 1);
+        check_translated(code, &info, "fragment discard fixture translates");
+        if (code) {
+            save_fixture(flow_discard_paths[variant], code, words);
+            if (variant == 0) {
+                check(count_opcode(code, words, 5380, UINT32_MAX) == 1, "straight-line KIL keeps demotion");
+                check(count_opcode(code, words, 246, UINT32_MAX) == 0, "straight-line fragment needs no flow loop");
+            } else {
+                check(discard_after_flow(code, words), "flow discards and returns only after the dispatch loop");
+                if (variant == 5 || variant == 6) {
+                    check(count_opcode(code, words, variant == 5 ? 99 : 239, UINT32_MAX) == 1,
+                          "flow preserves storage writes and atomics");
+                    check(count_opcode(code, words, 166, UINT32_MAX) >= 3,
+                          "discarded flag participates in storage and SR_THREAD_KILL helper checks");
+                }
+            }
+        }
+        free(code);
+    }
+}
+
 static void pexit_flow(void) {
     u64 program[64] = {0};
     program[10] = SCHED;
@@ -2177,6 +2245,10 @@ int main(int argc, char** argv) {
             snprintf(name, sizeof name, "attribute_%d", i);
             attribute_paths[i] = fixture_path(argv[1], name);
         }
+        for (int i = 0; i < 8; i++) {
+            snprintf(name, sizeof name, "flow_discard_%d", i);
+            flow_discard_paths[i] = fixture_path(argv[1], name);
+        }
         pexit_path = fixture_path(argv[1], "pexit");
         for (int i = 0; i < 6; i++) {
             char name[32];
@@ -2188,7 +2260,7 @@ int main(int argc, char** argv) {
             snprintf(name, sizeof name, "audit_%d", i);
             audit_paths[i] = fixture_path(argv[1], name);
         }
-        if (fixture_count != 64) {
+        if (fixture_count != 72) {
             fprintf(stderr, "failed to allocate fixture paths\n");
             return 2;
         }
@@ -2215,6 +2287,7 @@ int main(int argc, char** argv) {
     layer_capabilities();
     fragment_queries();
     eden_forms();
+    fragment_flow_discard();
     pexit_flow();
     gradients();
     texture_forms();

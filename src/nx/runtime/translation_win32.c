@@ -15,6 +15,7 @@
 #include "launcher_setup.h"
 #include "launcher_icon.h"
 #include "launcher_binding.h"
+#include "launcher_pending.h"
 
 int ykw4_select_language(int argc);
 typedef DWORD(WINAPI* ReadPad)(DWORD, XINPUT_STATE*);
@@ -27,6 +28,7 @@ typedef struct {
     HWND settings_controls[32];
     unsigned settings_count;
     wchar_t base[32768];
+    LauncherPending saved;
 } Launcher;
 
 static void show_tab(HWND window, Launcher* state) {
@@ -258,6 +260,7 @@ static int save_controls(HWND window, Launcher* state) {
     }
     state->spanish = spanish;
     if (!rpc_save(window, state)) goto failed;
+    launcher_pending_capture(window, state->mods, &state->saved);
     SetDlgItemTextW(window, IDC_STATUS, L"Ajustes guardados. Se aplicarán al iniciar el juego.");
     return 1;
 failed:
@@ -303,6 +306,7 @@ static INT_PTR CALLBACK launcher_proc(HWND window, UINT message, WPARAM wp, LPAR
         if (!state->mods) { EndDialog(window, 0); return TRUE; }
         SetTimer(window, 3, 2000, NULL);
         launcher_mods_rescan(window, state->mods);
+        launcher_pending_capture(window, state->mods, &state->saved);
         if (state->read_pad) {
             for (DWORD i = 0; i < 4; i++) {
                 XINPUT_STATE pad;
@@ -330,7 +334,10 @@ static INT_PTR CALLBACK launcher_proc(HWND window, UINT message, WPARAM wp, LPAR
                 EnableWindow(window, FALSE);
                 int updated = launcher_update(state->base, executable);
                 EnableWindow(window, TRUE); SetForegroundWindow(window);
-                if (updated) load_controls(window, state);
+                if (updated) {
+                    load_controls(window, state);
+                    launcher_pending_capture(window, state->mods, &state->saved);
+                }
             }
             return TRUE;
         }
@@ -344,11 +351,16 @@ static INT_PTR CALLBACK launcher_proc(HWND window, UINT message, WPARAM wp, LPAR
         if (id == IDCANCEL) { EndDialog(window, 0); return TRUE; }
         if (id == IDC_APPLY || id == IDOK) {
             if (id == IDOK && !state->ready) return TRUE;
-            if (id == IDOK && SendDlgItemMessageW(window, IDC_LANGUAGE, CB_GETCURSEL, 0, 0) != 1 && !state->original_available) {
+            if (id == IDC_APPLY) { save_controls(window, state); return TRUE; }
+            int choice = launcher_pending_confirm(window, state->mods, &state->saved);
+            if (choice != IDYES && choice != IDNO) return TRUE;
+            int spanish = choice == IDYES ? SendDlgItemMessageW(window, IDC_LANGUAGE, CB_GETCURSEL, 0, 0) == 1 : state->spanish;
+            if (!spanish && !state->original_available) {
                 MessageBoxW(window, L"No se encuentra el contenido original del juego. Selecciona una traducción instalada o restaura los archivos originales.", L"YKW4", MB_OK | MB_ICONINFORMATION);
                 return TRUE;
             }
-            if (save_controls(window, state) && id == IDOK) EndDialog(window, 1);
+            if (choice == IDYES && !save_controls(window, state)) return TRUE;
+            EndDialog(window, 1);
             return TRUE;
         }
     } else if (message == WM_NOTIFY) {

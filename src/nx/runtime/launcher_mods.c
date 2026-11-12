@@ -416,6 +416,15 @@ void launcher_mods_rescan(HWND window, LauncherMods* mods) {
     if (added) { rows(window, mods, -1); SetDlgItemTextW(window, IDC_MOD_INFO, L"Se han detectado mods nuevos. Marca sus casillas para activarlos."); }
 }
 
+void launcher_mods_snapshot(HWND window, LauncherMods* mods, wchar_t snapshot[8192]) {
+    snapshot[0] = 0;
+    if (!mods) return;
+    sync_checks(window, mods);
+    size_t used = 0;
+    for (int index = 0; index < mods->count; index++)
+        used += (size_t)swprintf(snapshot + used, 8192 - used, L"%ls:%d;", mods->items[index].key, mods->items[index].enabled);
+}
+
 int launcher_mods_write_ini(HWND window, LauncherMods* mods, const wchar_t* ini) {
     if (!mods) return 0;
     sync_checks(window, mods);

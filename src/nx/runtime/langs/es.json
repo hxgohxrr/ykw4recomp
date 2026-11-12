@@ -170,6 +170,8 @@
     "Esta preparacion vincula el modulo a este equipo y a esta instalacion de Windows. Copiarlo a otro PC no permite jugar. No se envian identificadores. Si cambias de placa o reinstalas Windows, prepara el juego de nuevo con tus propios archivos en una carpeta nueva. Conserva tus partidas. Las instalaciones antiguas sin vinculo no se convierten. Continuar?": "Esta preparación vincula el módulo a este equipo y a esta instalación de Windows. Copiarlo a otro PC no permite jugar. No se envían identificadores. Si cambias de placa o reinstalas Windows, prepara el juego de nuevo con tus propios archivos en una carpeta nueva. Conserva tus partidas. Las instalaciones antiguas sin vínculo no se convierten. ¿Continuar?",
     "Vinculacion local del modulo": "Vinculación local del módulo",
     "No se pudo leer un UUID SMBIOS valido. No se ha instalado ni vinculado el modulo.": "No se pudo leer un UUID SMBIOS válido. No se ha instalado ni vinculado el módulo.",
-    "No se pudo vincular el modulo. La instalacion anterior no se ha modificado.": "No se pudo vincular el módulo. La instalación anterior no se ha modificado."
+    "No se pudo vincular el modulo. La instalacion anterior no se ha modificado.": "No se pudo vincular el módulo. La instalación anterior no se ha modificado.",
+    "Cambios sin aplicar": "Cambios sin aplicar",
+    "Hay cambios sin aplicar. ¿Quieres aplicarlos antes de jugar?\n\nSí: aplicar los cambios y jugar.\nNo: jugar con los ajustes guardados.\nCancelar: volver al launcher.": "Hay cambios sin aplicar. ¿Quieres aplicarlos antes de jugar?\n\nSí: aplicar los cambios y jugar.\nNo: jugar con los ajustes guardados.\nCancelar: volver al launcher."
   }
 }

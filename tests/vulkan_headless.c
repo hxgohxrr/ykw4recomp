@@ -7,6 +7,8 @@
 #include "nx/runtime/options.h"
 #include "nx/gpu/renderer.h"
 #include "nx/gpu/vk/vk.h"
+#include "nx/runtime/frame_profile.h"
+#include "nx/runtime/platform/plat.h"
 #include "nx/memory/mem.h"
 #include "nx/hle/services/nvdrv.h"
 #include "nx/runtime/platform/backend.h"
@@ -115,6 +117,25 @@ static int check_raster_winding(void) {
         .stageCount=2,.pStages=stages,.pVertexInputState=&vertices,.pInputAssemblyState=&assembly,.pViewportState=&viewport,
         .pRasterizationState=&raster,.pMultisampleState=&ms,.pColorBlendState=&blending,.pDynamicState=&dynamic,.layout=layout};
     VkPipeline pipeline; CHECK(vkCreateGraphicsPipelines(g_vk.dev,VK_NULL_HANDLE,1,&pi,NULL,&pipeline)==VK_SUCCESS);
+    // Exercise the runtime lookup with complete keys, including a changed raster
+    // field and a return to the earlier key. Both memo and hash-only runs use it.
+    PipeKey key = {0};
+    key.vs = modules[0]; key.fs = modules[1];
+    key.topo_class = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    key.polygon = VK_POLYGON_MODE_FILL;
+    key.nattr = key.nbind = key.ncolor = 1;
+    key.attr[0].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    key.color[0] = ici.format; key.blend[0].mask = 15;
+    VkPipeline cached = vk_pipeline_get(&key); CHECK(cached);
+    for (int repeat = 0; repeat < 1000; repeat++) CHECK(vk_pipeline_get(&key) == cached);
+    key.depth_clamp = !key.depth_clamp;
+    // Only request depth clamp when the physical device supports it.
+    if (g_vk.feat.depthClamp) {
+        VkPipeline changed = vk_pipeline_get(&key); CHECK(changed && changed != cached);
+        CHECK(vk_pipeline_get(&key) == changed);
+    }
+    key.depth_clamp = 0;
+    CHECK(vk_pipeline_get(&key) == cached);
     VkQueryPool pool; VkQueryPoolCreateInfo qi={.sType=VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,.queryType=VK_QUERY_TYPE_OCCLUSION,.queryCount=4};
     CHECK(vkCreateQueryPool(g_vk.dev,&qi,NULL,&pool)==VK_SUCCESS);
     vk_render_end(); VkCommandBuffer cb=vk_cmd();
@@ -726,6 +747,11 @@ int main(int argc, char** argv) {
     char *root = snx_temp_dir(NULL), *shot, *ppm;
     CHECK(root);
     CHECK(!snx_startup_options(argc, argv));
+    const char* profile_env = getenv("YKW4_TEST_FRAME_PROFILE");
+    int profiling = profile_env && !strcmp(profile_env, "1");
+    char* profile_path = snx_path_join(root, "frame-profile.csv");
+    CHECK(frame_profile_init(profiling, profile_path, plat_ns(), 0));
+    free(profile_path);
     const char* sync_mode = getenv("YKW4_TEST_GPU_SYNC_TRACE");
     g_opt_gpu_sync_trace = sync_mode ? atoi(sync_mode) : 0;
     CHECK(g_opt_gpu_sync_trace >= 0 && g_opt_gpu_sync_trace <= 5);
@@ -801,6 +827,13 @@ int main(int argc, char** argv) {
     g_renderer->present_buffer(0, 0, 0, 0, 0, 0, 1, full, 0);
     CHECK(vk_frame_id() == before + 1);
     vk_finish();
+    if (profiling) {
+        char report[4096];
+        CHECK(frame_profile_poll(plat_ns(), 8, 60, 1, 0, 1, report, sizeof report));
+        CHECK(strstr(report, "gpu_graphics_span calls=") || strstr(report, "query_dropped="));
+        puts(report);
+        frame_profile_init(0, NULL, 0, 0);
+    }
     free(g_mem);
     g_mem = NULL;
     CHECK(!snx_remove_tree(root));

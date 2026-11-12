@@ -294,6 +294,8 @@
     "Selecciona una imagen RomFS válida.": "Select a valid RomFS image.",
     "No se pudo vincular el módulo. Comprueba la identidad, la clave privada y los permisos. La instalación anterior no se ha modificado.": "Could not bind the module. Check the identity, private key and permissions. The previous installation has not been modified.",
     "No se pudo cargar el módulo ELF o sus dependencias.": "Could not load the ELF module or its dependencies.",
-    "Módulo dañado, dependencias ausentes o vinculado a otra instalación/usuario. Prepara de nuevo en otra carpeta. No se han cambiado las partidas.": "The module is damaged, dependencies are missing, or it is bound to another installation/user. Prepare it again in another folder. Saves have not been changed."
+    "Módulo dañado, dependencias ausentes o vinculado a otra instalación/usuario. Prepara de nuevo en otra carpeta. No se han cambiado las partidas.": "The module is damaged, dependencies are missing, or it is bound to another installation/user. Prepare it again in another folder. Saves have not been changed.",
+    "Cambios sin aplicar": "Unapplied changes",
+    "Hay cambios sin aplicar. ¿Quieres aplicarlos antes de jugar?\n\nSí: aplicar los cambios y jugar.\nNo: jugar con los ajustes guardados.\nCancelar: volver al launcher.": "There are unapplied changes. Apply them before playing?\n\nYes: apply changes and play.\nNo: play with the saved settings.\nCancel: return to the launcher."
   }
 }

@@ -2,8 +2,8 @@
 <!-- Copyright 2026 the ScarletNX contributors -->
 # macOS and iOS
 
-Both build on a Mac with Xcode, for Apple silicon (arm64), with Xcode's Clang, and the CI builds both on every push
-(`.github/workflows/build.yml`). They are new and have only been built by CI. No game has run on either yet, for the
+Both build on a Mac with Xcode, for Apple silicon (arm64), with Xcode's Clang.
+Manual CI builds use `.github/workflows/platforms.yml` (target `macos` or `ios`). They are new and have only been built by CI. No game has run on either yet, for the
 reasons under [What is missing](#what-is-missing).
 
 ## The frontend
@@ -61,6 +61,14 @@ framework.
   macOS.
 
 ## Building
+
+The macOS preset uses Release optimization and checked C/C++ link-time
+optimization (`SNX_LTO=ON`). Set `-DSNX_LTO=OFF` to compare builds.
+Consecutive identical graphics pipeline keys reuse the last lookup by default;
+`SNX_VK_PIPELINE_MEMO=0` selects the hash-table path for comparisons.
+The macOS CI artifact `YKW4Recomp-macos-arm64` contains a ZIP of the ad-hoc-signed
+app with checksum-verified MoltenVK. A successful build does not resolve the
+runtime limitations above or establish game performance.
 
 LLVM's libraries first, once for each system, with AArch64's code generator alone, the one the recompiler uses
 (about 10 minutes on an M1). `scripts/apple-llvm.sh` builds them, and the CI caches them:

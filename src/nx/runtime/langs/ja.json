@@ -195,6 +195,8 @@
     "Esta preparacion vincula el modulo a este equipo y a esta instalacion de Windows. Copiarlo a otro PC no permite jugar. No se envian identificadores. Si cambias de placa o reinstalas Windows, prepara el juego de nuevo con tus propios archivos en una carpeta nueva. Conserva tus partidas. Las instalaciones antiguas sin vinculo no se convierten. Continuar?": "この準備では、モジュールをこのPCとWindowsのインストール環境に紐付けます。他のPCにコピーしても起動できません。識別情報は送信されません。マザーボードの交換やWindowsの再インストール後は、ご自身のファイルから新しいフォルダーにゲームを準備し直してください。セーブデータは保管してください。既存の未紐付けのインストールは変換されません。続行しますか？",
     "Vinculacion local del modulo": "モジュールのローカル紐付け",
     "No se pudo leer un UUID SMBIOS valido. No se ha instalado ni vinculado el modulo.": "有効なSMBIOS UUIDを読み取れませんでした。モジュールのインストールや紐付けは行われていません。",
-    "No se pudo vincular el modulo. La instalacion anterior no se ha modificado.": "モジュールを紐付けできませんでした。以前のインストールは変更されていません。"
+    "No se pudo vincular el modulo. La instalacion anterior no se ha modificado.": "モジュールを紐付けできませんでした。以前のインストールは変更されていません。",
+    "Cambios sin aplicar": "未適用の変更",
+    "Hay cambios sin aplicar. ¿Quieres aplicarlos antes de jugar?\n\nSí: aplicar los cambios y jugar.\nNo: jugar con los ajustes guardados.\nCancelar: volver al launcher.": "未適用の変更があります。プレイ前に適用しますか？\n\nはい: 変更を適用してプレイ。\nいいえ: 保存済みの設定でプレイ。\nキャンセル: ランチャーに戻る。"
   }
 }

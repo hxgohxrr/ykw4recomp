@@ -127,3 +127,57 @@ mode 0. Performance and Radeon transition stability remain unverified.
 
 The general headless Vulkan fixture validates initialization and presentation
 with the new setting; it does not exercise the guest compute translation path.
+
+## Fragment flow discard on Radeon, 9 November 2026
+
+Reviewed upstream through `a72181a5d0963b647dfbf61c0a2c8546227d4d7b`.
+Selectively adapted `ec9c208c66d5159cd44cb34d06506b2025865b4a` to this
+runtime's existing Maxwell translator, without changing the module ABI.
+
+Fragment programs with control flow now record KIL and alpha-test discard in a
+per-lane flag, leave the dispatch loop through its program counter, and perform
+the actual discard after the loop. Storage writes and atomics skip marked lanes;
+SR_THREAD_KILL observes the flag as well. Programs without flow retain demotion.
+The change applies to both Windows and Linux and does not enable diagnostic
+queue serialization or per-draw completion waits.
+
+The upstream RX 6600 report identified helper lanes remaining in the flow loop
+when AMD's compiler stopped executing them after an in-loop demote or kill.
+This is a concrete shader-side cause to test, not proof that every earlier
+DEVICE_LOST report had the same cause. The unsigned storage-image limit fix was
+already present and remains unchanged.
+
+Eight synthetic fixtures cover straight-line KIL, flow KIL, predicated KIL,
+alpha-only discard, conditional EXIT, storage-image writes, image atomics and
+PEXIT. The earlier translator fails all seven new flow-order checks; the updated
+translator passes them. The complete direct-shader suite validates all 77
+SPIR-V fixtures with spirv-val for Vulkan 1.3 in WSL. The C shader regressions
+also pass AddressSanitizer and UndefinedBehaviorSanitizer with leak detection.
+
+Recent HMMA/SM86 changes target another guest GPU architecture and are not
+transplanted into the Maxwell path. The newer one-to-one depth-blit optimization
+also depends on a depth-blit path this renderer does not have; copying only that
+commit would not provide its intended optimization.
+
+A full runtime build, an affected Radeon run and the previously failing door
+transition still need verification. No FPS gain or complete crash fix is claimed.
+
+## ASTC partition hash optimization, 9 November 2026
+
+Adapted the arithmetic from upstream
+`68b6cc9be561eb5edc988521388c38a24b562e7e` to the checked-in ASTC SPIR-V.
+Three consecutive shift/add/subtract operations in Hash52 become one unsigned
+multiply by 4007528593, equal modulo 2^32 for every input. The existing CPU
+reference decoder stays unchanged. The embedded header is regenerated from the
+assembly and checked with `scripts/build-astc-shader.py --check`.
+
+This reduces shader work without reducing texture quality, changing ASTC
+footprints, or enabling lossy compression. Its impact on in-game FPS still
+requires measurement; no frame-rate increase is claimed.
+
+Validation: all 86 existing GPU/CPU differential cases pass on WSL's Mesa
+lavapipe (software Vulkan), including all 14 ASTC footprints, linear/sRGB,
+array layers, 3D slices, mip levels and large uploads. This checks output
+against the unchanged CPU decoder; it is not Radeon hardware validation or an
+FPS benchmark. The standalone fixture now supplies the renderer-state reset,
+fatal device-loss reporting and monotonic clock hooks required by cmd.c.

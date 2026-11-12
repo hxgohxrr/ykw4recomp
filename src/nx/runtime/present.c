@@ -3,6 +3,7 @@
    any copy or derived work must keep the credit to SwitchRecomp by MZ Labs.
    This fork's changes are under GPL-3.0-or-later, the license of the fork as a whole (LICENSE). */
 
+#include "nx/runtime/frame_profile.h"
 #include "nx/runtime/main.h"
 #include "nx/runtime/options.h"
 #include "nx/gpu/gpu.h"
@@ -76,6 +77,7 @@ void vi_show_buffer(u32 nvmap_id, u32 offset, u32 w, u32 h, u32 pitch, u32 layou
 
     g_renderer->present_buffer(a + offset, w, h, pitch, layout, bhl, fmt, crop, transform);
     __atomic_add_fetch(&g_frames, 1, __ATOMIC_RELAXED);
+    frame_profile_frame();
 }
 
 void present_pace(u32 interval) {
@@ -83,6 +85,7 @@ void present_pace(u32 interval) {
     static u64 last;                                          
     int fps = __atomic_load_n(&g_opt_fps, __ATOMIC_RELAXED);  
     u64 per, refresh, now, next;
+    frame_profile_add(FP_GUEST_INTERVAL, (u64)interval * (1000000000ull / VI_REFRESH_HZ), 1);
     if (!fps || (fps == SNX_FPS_GAME && !interval)) return;
     refresh = fps == SNX_FPS_GAME ? 1000000000ull / VI_REFRESH_HZ : 1000000000ull / (u64)fps;
     per = fps == SNX_FPS_GAME ? refresh * interval : refresh;
@@ -92,5 +95,9 @@ void present_pace(u32 interval) {
     if (!last || now > next + refresh) next = now;  
     last = next;
     pm_unlock(&lock);
-    if (next > now) plat_sleep_ns((i64)(next - now));
+    if (next > now) {
+        u64 timing = frame_profile_begin();
+        plat_sleep_ns((i64)(next - now));
+        frame_profile_end(FP_PACING, timing);
+    }
 }

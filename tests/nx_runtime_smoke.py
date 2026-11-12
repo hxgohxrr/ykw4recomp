@@ -4,6 +4,7 @@
 
 import argparse
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -40,6 +41,7 @@ def main():
     parser.add_argument('--repo', type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument('--timeout', type=float, default=30)
     parser.add_argument('--relocate', action='store_true')
+    parser.add_argument('--frame-profile', action='store_true')
     parser.add_argument('--artifact-dir', type=Path, default=Path('build/nx-smoke-failures'))
     args = parser.parse_args()
     runtime, repo, artifacts = args.runtime.resolve(), args.repo.resolve(), args.artifact_dir.resolve()
@@ -49,6 +51,11 @@ def main():
         fixture.write_bytes(make_nro())
         env = os.environ.copy()
         env.pop('SNX_GAME', None)
+        env.pop('SNX_FRAME_PROFILE', None)
+        for name in ('APPDATA', 'LOCALAPPDATA', 'USERPROFILE', 'HOME', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME', 'XDG_CACHE_HOME'):
+            env[name] = str(scratch / name.lower())
+        if args.frame_profile:
+            env['SNX_FRAME_PROFILE'] = '1'
         try:
             compile_command = [
                 str(runtime),
@@ -93,6 +100,13 @@ def main():
                 raise RuntimeError(
                     f'NX runtime returned {result.returncode} or did not execute the Horizon SVC markers'
                 )
+            if args.frame_profile:
+                match = re.search(r'perf: enabled; csv=(.+?) file_open=1;', text)
+                if not match or not Path(match[1]).is_file():
+                    raise RuntimeError('Frame profile CSV was not created')
+                rows = Path(match[1]).read_text(encoding='utf-8').splitlines()
+                if len(rows) < 2 or 'max_since_start_ns' not in rows[0] or 'perf: ' not in text:
+                    raise RuntimeError('Frame profile did not flush a final report')
             print('Synthetic NRO recompiled and ran Horizon OutputDebugString/ExitProcess with headless Vulkan.')
             return 0
         except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:

@@ -31,6 +31,15 @@ int wmain(int argc, wchar_t** argv) {
                                 parent, (HMENU)(INT_PTR)IDC_MODLIST, NULL, NULL); assert(list);
     LauncherMods* mods = launcher_mods_load(parent, base, ini); assert(mods && mods->count == 3);
     assert(launcher_mods_has_spanish(mods));
+    wchar_t saved[8192], changed[8192];
+    launcher_mods_snapshot(parent, mods, saved);
+    int checked = ListView_GetCheckState(list, 0) != 0;
+    ListView_SetCheckState(list, 0, !checked);
+    launcher_mods_snapshot(parent, mods, changed);
+    assert(wcscmp(saved, changed));
+    ListView_SetCheckState(list, 0, checked);
+    launcher_mods_snapshot(parent, mods, changed);
+    assert(!wcscmp(saved, changed));
     for (int i = 0; i < 3; i++) ListView_SetCheckState(list, i, !mods->items[i].spanish);
     launcher_mods_select_spanish(parent, mods, 1);
     int spanish = 0, other = 0;

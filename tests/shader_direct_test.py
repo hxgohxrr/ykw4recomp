@@ -72,6 +72,7 @@ def main():
             pexit,
             *(Path(directory) / f'passthrough_{i}.spv' for i in range(6)),
             *(Path(directory) / f'audit_{i}.spv' for i in range(6)),
+            *(Path(directory) / f'flow_discard_{i}.spv' for i in range(8)),
         )
         subprocess.run([args.regressions, directory], check=True)
         for fixture in (path, vertex, abs_fragment, stack_fragment, subgroup, *fixtures):

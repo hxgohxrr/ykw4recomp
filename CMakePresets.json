@@ -47,7 +47,9 @@
         "CMAKE_OSX_ARCHITECTURES": "arm64",
         "CMAKE_OSX_DEPLOYMENT_TARGET": "13.0",
         "CMAKE_Swift_COMPILER_TARGET": "arm64-apple-macos13.0",
-        "SNX_BUILD_GNUABI": "OFF"
+        "SNX_BUILD_GNUABI": "OFF",
+        "CMAKE_BUILD_TYPE": "Release",
+        "SNX_LTO": "ON"
       }
     },
     {
@@ -79,7 +81,11 @@
       "name": "launcher-linux",
       "inherits": "default",
       "displayName": "YKW4 Linux desktop launcher",
-      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
       "cacheVariables": {
         "SNX_BUILD_GUI": "ON",
         "SNX_BUILD_GNUABI": "OFF",
@@ -106,7 +112,10 @@
     }
   ],
   "buildPresets": [
-    { "name": "launcher-linux", "configurePreset": "launcher-linux" },
+    {
+      "name": "launcher-linux",
+      "configurePreset": "launcher-linux"
+    },
     {
       "name": "default",
       "configurePreset": "default"

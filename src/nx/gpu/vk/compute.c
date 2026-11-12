@@ -2,6 +2,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
    Copyright 2026 the ScarletNX contributors */
 
+#include "nx/runtime/frame_profile.h"
 #include <stdlib.h>
 #include <string.h>
 #include "nx/gpu/vk/storage_range.h"
@@ -198,7 +199,9 @@ static void cs_submit(void) {
                         .pCommandBufferInfos = &c,
                         .signalSemaphoreInfoCount = 1,
                         .pSignalSemaphoreInfos = &sig};
+    u64 timing = frame_profile_begin();
     VkResult r = vkQueueSubmit2(g_vk.compute, 1, &si, VK_NULL_HANDLE);
+    frame_profile_end(FP_SUBMIT_COMPUTE, timing);
     if (r == VK_ERROR_DEVICE_LOST) {
         WARN("vulkan: device lost on compute submit=%llu dispatches=%llu\n",
              (unsigned long long)g_cval, (unsigned long long)g_vk_dispatches);
@@ -221,6 +224,7 @@ static void cs_wait(u64 value) {
     u64 t0 = plat_ns();
     VK_OK(vkWaitSemaphores(g_vk.dev, &wi, UINT64_MAX));
     __atomic_add_fetch(&g_vk_cs_wait_ns, plat_ns() - t0, __ATOMIC_RELAXED);
+    frame_profile_end(FP_WAIT_COMPUTE, frame_profile_enabled() ? t0 : 0);
 }
 
 static void cs_write_back(VmaAllocation mem, const u8* ar, const u8* org, const CsOut* out, int nout) {
@@ -522,7 +526,9 @@ static CsPipe* cs_pipe(const u8* code, u32 lx, u32 ly, u32 lz, u32 shm, CsKey k)
                                                 .module = m,
                                                 .pName = "main"},
                                       .layout = g_vk_playout};
+    u64 timing = frame_profile_begin();
     if (!VK_OK(vkCreateComputePipelines(g_vk.dev, vk_pipeline_cache(), 1, &ci, NULL, &p->p))) p->failed = 1;
+    frame_profile_end(FP_PIPELINE_COMPUTE, timing);
     vkDestroyShaderModule(g_vk.dev, m, NULL);
     if (!p->failed)
         LOG_LIMIT(12, "vulkan: compute %016llx ready: block %ux%ux%u, %d global buffers, %d textures, %d images\n",
