@@ -129,6 +129,13 @@ jobs:
           tar -xf moltenvk.tar -C moltenvk
           sh scripts/apple-app.sh ios stage app moltenvk
           unzip -t app/YKW4Recomp.ipa
+      - uses: actions/upload-artifact@v4
+        if: matrix.platform == 'ios' && success()
+        with:
+          name: YKW4Recomp-ios-arm64
+          path: app/YKW4Recomp.ipa
+          if-no-files-found: error
+          retention-days: 14
       - name: Record successful compilation
         run: echo "Compilation and install completed for ${{ github.job }}. Artifact upload is a separate step." >> "$GITHUB_STEP_SUMMARY"
       - name: Upload package and corresponding source to draft release
